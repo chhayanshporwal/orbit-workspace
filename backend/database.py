@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import create_engine, String, ForeignKey, DateTime
+from sqlalchemy import create_engine, String, ForeignKey, DateTime, Table, Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship, sessionmaker, DeclarativeBase
 
 # 1. The Connection String 
@@ -29,6 +29,17 @@ def get_db():
         db.close()
 
 # ==========================================
+# THE JOIN TABLE (For Team Members)
+# ==========================================
+workspace_members = Table(
+    "workspace_members",
+    Base.metadata,
+    Column("user_id", ForeignKey("users.id"), primary_key=True),
+    Column("workspace_id", ForeignKey("workspaces.id"), primary_key=True),
+    Column("role", String, nullable=False, default="member") # "admin" or "member"
+)
+
+# ==========================================
 # 1. THE USERS TABLE
 # ==========================================
 class User(Base):
@@ -39,7 +50,7 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[str] = mapped_column(String, default="member") 
 
-    workspaces: Mapped[List["Workspace"]] = relationship(back_populates="owner")
+    workspaces: Mapped[List["Workspace"]] = relationship(secondary=workspace_members, back_populates="members")
     tasks: Mapped[List["Task"]] = relationship(back_populates="assignee")
 
 # ==========================================
@@ -50,9 +61,8 @@ class Workspace(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    members: Mapped[List["User"]] = relationship(secondary=workspace_members, back_populates="workspaces")
     
-    owner: Mapped["User"] = relationship(back_populates="workspaces")
     projects: Mapped[List["Project"]] = relationship(back_populates="workspace")
 
 # ==========================================

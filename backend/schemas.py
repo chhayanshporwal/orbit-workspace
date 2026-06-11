@@ -1,6 +1,7 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional
+from enum import Enum
 
 # ==========================================
 # USER SCHEMAS
@@ -14,23 +15,19 @@ class UserResponse(BaseModel):
     email: str
     role: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ==========================================
 # WORKSPACE SCHEMAS
 # ==========================================
 class WorkspaceCreate(BaseModel):
     name: str
-    owner_id: int # In a real app, this comes from the JWT token, but we will pass it manually for now
 
 class WorkspaceResponse(BaseModel):
     id: int
     name: str
-    owner_id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ==========================================
 # PROJECT SCHEMAS
@@ -46,12 +43,16 @@ class ProjectResponse(BaseModel):
     description: Optional[str] = None
     workspace_id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ==========================================
 # TASK SCHEMAS
 # ==========================================
+class TaskStatus(str, Enum):
+    TODO = "To Do"
+    IN_PROGRESS = "In Progress"
+    DONE = "Done"
+
 class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
@@ -59,16 +60,15 @@ class TaskCreate(BaseModel):
     assignee_id: Optional[int] = None
 
 class TaskUpdate(BaseModel):
-    status: str # Used for moving "To Do" -> "In Progress"
+    status: TaskStatus 
     
 class TaskResponse(BaseModel):
     id: int
     title: str
     description: Optional[str] = None
-    status: str
+    status: TaskStatus 
     priority_level: int
     project_id: int
     assignee_id: Optional[int] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
