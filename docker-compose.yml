@@ -1,0 +1,44 @@
+services:
+  # 1. THE DATABASE ENGINE
+  db:
+    image: postgres:16-alpine
+    container_name: orbit_db
+    restart: always
+    environment:
+      POSTGRES_USER: orbit_admin
+      POSTGRES_PASSWORD: supersecretpassword
+      POSTGRES_DB: orbit_database
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 2. THE VISUAL DASHBOARD (pgAdmin)
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: orbit_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@orbit.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+
+  # 3. THE FASTAPI BACKEND
+  backend:
+    build: ./backend
+    container_name: orbit_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://orbit_admin:supersecretpassword@db:5432/orbit_database
+    depends_on:
+      - db
+    volumes:
+      - ./backend:/app
+
+# 4. PERMANENT STORAGE
+volumes:
+  postgres_data:
