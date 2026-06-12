@@ -1,43 +1,73 @@
-from pydantic import BaseModel, ConfigDict
-from datetime import datetime
-from typing import Optional
-from enum import Enum
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Optional, List, Literal
+import re
+
 
 # ==========================================
-# USER SCHEMAS
+# 1. USER SCHEMAS
 # ==========================================
-class UserCreate(BaseModel):
+class UserBase(BaseModel):
     email: str
+
+
+class UserCreate(UserBase):
     password: str
 
-class UserResponse(BaseModel):
+
+class UserResponse(UserBase):
     id: int
     email: str
+
+    # Required in Pydantic v2 to read SQLAlchemy models
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==========================================
+# 2. RBAC MEMBERSHIP SCHEMAS
+# ==========================================
+class WorkspaceMembershipResponse(BaseModel):
+    id: int
+    user_id: int
     role: str
+    user: UserResponse  # Nested user details so the frontend can display emails
 
     model_config = ConfigDict(from_attributes=True)
 
+
 # ==========================================
-# WORKSPACE SCHEMAS
+# 3. WORKSPACE SCHEMAS
 # ==========================================
-class WorkspaceCreate(BaseModel):
+class WorkspaceBase(BaseModel):
     name: str
 
-class WorkspaceResponse(BaseModel):
+
+class WorkspaceCreate(WorkspaceBase):
+    pass
+
+
+class WorkspaceResponse(WorkspaceBase):
     id: int
     name: str
+    # V2 Architecture: Return memberships (with roles) instead of raw members
+    memberships: List[WorkspaceMembershipResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 
+
 # ==========================================
-# PROJECT SCHEMAS
+# 4. PROJECT SCHEMAS
 # ==========================================
-class ProjectCreate(BaseModel):
+class ProjectBase(BaseModel):
     name: str
     description: Optional[str] = None
     workspace_id: int
 
-class ProjectResponse(BaseModel):
+
+class ProjectCreate(ProjectBase):
+    pass
+
+
+class ProjectResponse(ProjectBase):
     id: int
     name: str
     description: Optional[str] = None
@@ -45,30 +75,38 @@ class ProjectResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-# ==========================================
-# TASK SCHEMAS
-# ==========================================
-class TaskStatus(str, Enum):
-    TODO = "To Do"
-    IN_PROGRESS = "In Progress"
-    DONE = "Done"
 
-class TaskCreate(BaseModel):
-    title: str
-    description: Optional[str] = None
+# ==========================================
+# 5. TASK SCHEMAS
+# ==========================================
+class TaskBase(BaseModel):
+    # ANTI-OOM: Strictly limit lengths
+    title: str = Field(..., max_length=100)
+    description: Optional[str] = Field(None, max_length=1000)
     priority_level: int = 1
     assignee_id: Optional[int] = None
 
+    # ANTI-XSS: Reject HTML/Script tags
+    @field_validator("title", "description")
+    @classmethod
+    def check_xss(cls, v):
+        if v is not None and re.search(r"<[^>]*>", v):
+            raise ValueError("HTML tags and scripts are strictly forbidden.")
+        return v
+
+
+class TaskCreate(TaskBase):
+    pass
+
+
 class TaskUpdate(BaseModel):
-    status: TaskStatus 
-    
-class TaskResponse(BaseModel):
+    # ANTI-CORRUPTION: Strictly limit allowed task states
+    status: Literal["To Do", "In Progress", "Done"]
+
+
+class TaskResponse(TaskBase):
     id: int
-    title: str
-    description: Optional[str] = None
-    status: TaskStatus 
-    priority_level: int
     project_id: int
-    assignee_id: Optional[int] = None
+    status: str
 
     model_config = ConfigDict(from_attributes=True)
