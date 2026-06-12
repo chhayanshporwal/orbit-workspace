@@ -9,3 +9,6 @@ alembic
 pytest
 httpx
 bcrypt
+redis
+slowapi
+python-dotenv
