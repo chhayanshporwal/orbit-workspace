@@ -1,13 +1,14 @@
 import os
 from dotenv import load_dotenv
 import redis
-from fastapi import Request, FastAPI, Depends, HTTPException
+from fastapi import Request, FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from database import get_db, User, Workspace, Project, Task, WorkspaceMembership
 from sqlalchemy.orm import Session
+from sqlalchemy import func, or_
 import bcrypt
 import schemas
-from typing import List
+from typing import List, Optional
 import jwt
 from datetime import datetime, timedelta, timezone
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -29,10 +30,7 @@ limiter = Limiter(key_func=get_remote_address, storage_uri="redis://redis:6379/0
 
 
 def custom_rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse(
-        status_code=429,
-        content={"detail": "Too many requests. Please wait a minute and try again."},
-    )
+    return JSONResponse(status_code=429, content={"detail": "Too many requests."})
 
 
 app.state.limiter = limiter
@@ -52,9 +50,7 @@ app.add_middleware(
 # SECURITY HELPERS
 # ==========================================
 def get_password_hash(password: str) -> str:
-    salt = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
-    return hashed.decode("utf-8")
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -63,49 +59,32 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     )
 
 
-SECRET_KEY = os.getenv("SECRET_KEY")
-if not SECRET_KEY:
-    raise ValueError("FATAL ERROR: SECRET_KEY is missing. Check your .env file.")
+SECRET_KEY = os.getenv("SECRET_KEY", "fallback-secret-for-dev")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 
 def create_access_token(data: dict):
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=60)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def get_current_user(
     token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
 ):
-    credentials_exception = HTTPException(
-        status_code=401,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    # ANTI-GHOST: Check if this exact token is in the Redis blacklist!
     if redis_client.get(token):
-        raise HTTPException(
-            status_code=401, detail="Token has been revoked. Please log in again."
-        )
-
+        raise HTTPException(status_code=401, detail="Token revoked.")
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str | None = payload.get("sub")
-        if email is None:
-            raise credentials_exception
     except jwt.InvalidTokenError:
-        raise credentials_exception
+        raise HTTPException(status_code=401, detail="Invalid token")
 
     user = db.query(User).filter(User.email == email).first()
-    if user is None:
-        raise credentials_exception
-
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
     return user
 
 
@@ -114,13 +93,9 @@ def get_current_user(
 # ==========================================
 @app.post("/users/", response_model=schemas.UserResponse)
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    existing_user = db.query(User).filter(User.email == user.email).first()
-    if existing_user:
+    if db.query(User).filter(User.email == user.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
-
-    hashed_pw = get_password_hash(user.password)
-    new_user = User(email=user.email, hashed_password=hashed_pw)
-
+    new_user = User(email=user.email, hashed_password=get_password_hash(user.password))
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
@@ -135,70 +110,54 @@ def login(
     db: Session = Depends(get_db),
 ):
     email = form_data.username
-    password = form_data.password
-
-    # BOTNET DEFENSE
-    lockout_key = f"lockout:{email}"
-    failed_attempts_key = f"failed_attempts:{email}"
+    lockout_key, failed_attempts_key = f"lockout:{email}", f"failed_attempts:{email}"
 
     if redis_client.get(lockout_key):
-        raise HTTPException(
-            status_code=403,
-            detail="Account locked due to suspicious activity. Try again in 15 minutes.",  # noqa: E501
-        )
+        raise HTTPException(status_code=403, detail="Account locked.")
 
     user = db.query(User).filter(User.email == email).first()
-
-    # TIMING ATTACK DEFENSE
-    dummy_hash = (
-        "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjIQqiRQYq"  # noqa: E501
+    dummy_hash = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjIQqiRQYq"
+    is_valid = (
+        verify_password(form_data.password, user.hashed_password)
+        if user
+        else verify_password(form_data.password, dummy_hash)
     )
 
-    is_valid_password = False
-    if user:
-        is_valid_password = verify_password(password, user.hashed_password)
-    else:
-        verify_password(password, dummy_hash)
-
-    # VALIDATION & LOCKOUT LOGIC
-    if not user or not is_valid_password:
+    if not user or not is_valid:
         redis_client.incr(failed_attempts_key)
-
         if redis_client.ttl(failed_attempts_key) == -1:
             redis_client.expire(failed_attempts_key, 600)
-
-        attempts = int(redis_client.get(failed_attempts_key) or 0)
-
-        if attempts >= 10:
+        if int(redis_client.get(failed_attempts_key) or 0) >= 10:
             redis_client.set(name=lockout_key, value="locked", ex=900)
             redis_client.delete(failed_attempts_key)
-            raise HTTPException(
-                status_code=403,
-                detail="Account locked due to suspicious activity. Try again in 15 minutes.",  # noqa: E501
-            )
-
+            raise HTTPException(status_code=403, detail="Account locked.")
         raise HTTPException(status_code=400, detail="Incorrect email or password")
 
     redis_client.delete(failed_attempts_key)
-
-    access_token = create_access_token(data={"sub": user.email})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": create_access_token({"sub": user.email}),
+        "token_type": "bearer",
+    }
 
 
 @app.post("/logout")
 def logout(token: str = Depends(oauth2_scheme)):
     try:
+        # 1. Decode the token payload
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         expire_timestamp = payload.get("exp")
 
+        # 2. THE GUARD CLAUSE: Explicitly handle the 'None' case
         if expire_timestamp is None:
             raise HTTPException(
-                status_code=401, detail="Invalid token: Missing expiration"
+                status_code=401, detail="Invalid token: Missing expiration claim"
             )
 
+        # 3. Safe Math: Pylance now knows expire_timestamp is definitely a float
         current_timestamp = datetime.now(timezone.utc).timestamp()
         time_remaining = int(expire_timestamp - current_timestamp)
 
+        # 4. Blacklist the token in Redis
         if time_remaining > 0:
             redis_client.set(name=token, value="revoked", ex=time_remaining)
 
@@ -208,7 +167,7 @@ def logout(token: str = Depends(oauth2_scheme)):
 
 
 # ==========================================
-# WORKSPACE ROUTES
+# WORKSPACE & PROJECT ROUTES
 # ==========================================
 @app.post("/workspaces/", response_model=schemas.WorkspaceResponse)
 def create_workspace(
@@ -217,10 +176,9 @@ def create_workspace(
     current_user: User = Depends(get_current_user),
 ):
     new_workspace = Workspace(name=workspace.name)
-    # The creator is automatically assigned the "admin" role
-    admin_membership = WorkspaceMembership(user=current_user, role="admin")
-    new_workspace.memberships.append(admin_membership)
-
+    new_workspace.memberships.append(
+        WorkspaceMembership(user=current_user, role="admin")
+    )
     db.add(new_workspace)
     db.commit()
     db.refresh(new_workspace)
@@ -229,92 +187,138 @@ def create_workspace(
 
 @app.get("/users/{user_id}/workspaces", response_model=List[schemas.WorkspaceResponse])
 def get_user_workspaces(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # Fetch Workspaces by joining through the new WorkspaceMembership table
-    active_workspaces = (
+    return (
         db.query(Workspace)
-        .join(WorkspaceMembership, Workspace.id == WorkspaceMembership.workspace_id)
-        .filter(
-            WorkspaceMembership.user_id == user_id,
-            Workspace.is_deleted == False,  # noqa: E712
-        )
+        .join(WorkspaceMembership)
+        .filter(WorkspaceMembership.user_id == user_id, Workspace.is_deleted == False)
         .all()
-    )
-    return active_workspaces
+    )  # noqa: E712
 
 
-@app.delete("/workspaces/{workspace_id}")
-def delete_workspace(
+# MVP Req 2: Invite Users to Workspace
+@app.post(
+    "/workspaces/{workspace_id}/members",
+    response_model=schemas.WorkspaceMembershipResponse,
+)
+def invite_user_to_workspace(
     workspace_id: int,
+    invite: schemas.WorkspaceInvite,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     workspace = (
         db.query(Workspace)
-        .filter(
-            Workspace.id == workspace_id, Workspace.is_deleted == False
-        )  # noqa: E712
+        .filter(Workspace.id == workspace_id, Workspace.is_deleted == False)
         .first()
-    )
+    )  # noqa: E712
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    # RBAC: Verify the user is an explicitly defined "admin"
-    membership = (
+    admin_check = (
         db.query(WorkspaceMembership)
-        .filter(
-            WorkspaceMembership.workspace_id == workspace_id,
-            WorkspaceMembership.user_id == current_user.id,
-        )
+        .filter_by(workspace_id=workspace_id, user_id=current_user.id, role="admin")
         .first()
     )
+    if not admin_check:
+        raise HTTPException(status_code=403, detail="Only Admins can invite users.")
 
-    if not membership or membership.role != "admin":
+    invited_user = db.query(User).filter(User.email == invite.email).first()
+    if not invited_user:
         raise HTTPException(
-            status_code=403, detail="Not authorized. Admin access required."
+            status_code=404, detail="User email not found. They must register first."
         )
 
-    workspace.is_deleted = True
-    workspace.deleted_at = datetime.now(timezone.utc)
+    existing_membership = (
+        db.query(WorkspaceMembership)
+        .filter_by(workspace_id=workspace_id, user_id=invited_user.id)
+        .first()
+    )
+    if existing_membership:
+        raise HTTPException(
+            status_code=400, detail="User is already in this workspace."
+        )
+
+    new_membership = WorkspaceMembership(
+        workspace_id=workspace_id, user_id=invited_user.id, role=invite.role
+    )
+    db.add(new_membership)
     db.commit()
-    return {"status": "success", "message": "Workspace moved to trash"}
+    db.refresh(new_membership)
+    return new_membership
 
 
-# ==========================================
-# PROJECT ROUTES
-# ==========================================
+# MVP Req 9: Analytics Dashboard
+@app.get(
+    "/workspaces/{workspace_id}/analytics", response_model=schemas.AnalyticsResponse
+)
+def get_workspace_analytics(
+    workspace_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    membership = (
+        db.query(WorkspaceMembership)
+        .filter_by(workspace_id=workspace_id, user_id=current_user.id)
+        .first()
+    )
+    if not membership:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    tasks_query = (
+        db.query(Task)
+        .join(Project)
+        .filter(
+            Project.workspace_id == workspace_id,
+            Task.is_deleted == False,
+            Project.is_deleted == False,
+        )
+    )  # noqa: E712
+
+    total_tasks = tasks_query.count()
+    status_aggregation = (
+        db.query(Task.status, func.count(Task.id))
+        .join(Project)
+        .filter(
+            Project.workspace_id == workspace_id,
+            Task.is_deleted == False,
+            Project.is_deleted == False,
+        )
+        .group_by(Task.status)
+        .all()
+    )  # noqa: E712
+
+    # Process SQLAlchemy Aggregation into a dictionary
+    status_counts = {status: count for status, count in status_aggregation}
+
+    # Count Overdue
+    current_time = datetime.now(timezone.utc)
+    overdue_tasks = tasks_query.filter(
+        Task.due_date < current_time, Task.status != "Done"
+    ).count()
+
+    return {
+        "total_tasks": total_tasks,
+        "status_counts": status_counts,
+        "overdue_tasks": overdue_tasks,
+    }
+
+
 @app.post("/projects/", response_model=schemas.ProjectResponse)
 def create_project(
     project: schemas.ProjectCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    workspace = (
-        db.query(Workspace)
-        .filter(
-            Workspace.id == project.workspace_id, Workspace.is_deleted == False
-        )  # noqa: E712
-        .first()
-    )
-    if not workspace:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-
-    # RBAC: Only Admins can create new projects inside a Workspace
-    membership = (
+    admin_check = (
         db.query(WorkspaceMembership)
-        .filter(
-            WorkspaceMembership.workspace_id == workspace.id,
-            WorkspaceMembership.user_id == current_user.id,
+        .filter_by(
+            workspace_id=project.workspace_id, user_id=current_user.id, role="admin"
         )
         .first()
     )
-
-    if not membership or membership.role != "admin":
+    if not admin_check:
         raise HTTPException(
-            status_code=403, detail="Not authorized. Admin access required."
+            status_code=403, detail="Admin required to create projects."
         )
 
     new_project = Project(
@@ -333,84 +337,22 @@ def create_project(
 )
 def get_workspace_projects(
     workspace_id: int,
-    skip: int = 0,
-    limit: int = 100,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    workspace = (
-        db.query(Workspace)
-        .filter(
-            Workspace.id == workspace_id, Workspace.is_deleted == False
-        )  # noqa: E712
+    if (
+        not db.query(WorkspaceMembership)
+        .filter_by(workspace_id=workspace_id, user_id=current_user.id)
         .first()
-    )
-    if not workspace:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-
-    # RBAC: Any member (Admin, Editor, or Viewer) can view projects
-    membership = (
-        db.query(WorkspaceMembership)
-        .filter(
-            WorkspaceMembership.workspace_id == workspace.id,
-            WorkspaceMembership.user_id == current_user.id,
-        )
-        .first()
-    )
-
-    if not membership:
-        raise HTTPException(
-            status_code=403, detail="Not authorized to view this workspace."
-        )
-
+    ):
+        raise HTTPException(status_code=403, detail="Not authorized.")
     return (
-        db.query(Project)
-        .filter(
-            Project.workspace_id == workspace_id, Project.is_deleted == False
-        )  # noqa: E712
-        .offset(skip)
-        .limit(limit)
-        .all()
+        db.query(Project).filter_by(workspace_id=workspace_id, is_deleted=False).all()
     )
-
-
-@app.delete("/projects/{project_id}")
-def delete_project(
-    project_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    project = (
-        db.query(Project)
-        .filter(Project.id == project_id, Project.is_deleted == False)  # noqa: E712
-        .first()
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    # RBAC: Only Admins can delete projects
-    membership = (
-        db.query(WorkspaceMembership)
-        .filter(
-            WorkspaceMembership.workspace_id == project.workspace_id,
-            WorkspaceMembership.user_id == current_user.id,
-        )
-        .first()
-    )
-
-    if not membership or membership.role != "admin":
-        raise HTTPException(
-            status_code=403, detail="Not authorized. Admin access required."
-        )
-
-    project.is_deleted = True
-    project.deleted_at = datetime.now(timezone.utc)
-    db.commit()
-    return {"status": "success", "message": "Project moved to trash"}
 
 
 # ==========================================
-# TASK ROUTES
+# TASK ROUTES (Search & Filters)
 # ==========================================
 @app.post("/projects/{project_id}/tasks", response_model=schemas.TaskResponse)
 def create_task(
@@ -419,33 +361,23 @@ def create_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    project = (
-        db.query(Project)
-        .filter(Project.id == project_id, Project.is_deleted == False)  # noqa: E712
-        .first()
-    )
+    project = db.query(Project).filter_by(id=project_id, is_deleted=False).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # RBAC: Admins and Editors can create tasks, Viewers cannot
     membership = (
         db.query(WorkspaceMembership)
-        .filter(
-            WorkspaceMembership.workspace_id == project.workspace_id,
-            WorkspaceMembership.user_id == current_user.id,
-        )
+        .filter_by(workspace_id=project.workspace_id, user_id=current_user.id)
         .first()
     )
-
     if not membership or membership.role not in ["admin", "editor"]:
-        raise HTTPException(
-            status_code=403, detail="Not authorized. Editor access required."
-        )
+        raise HTTPException(status_code=403, detail="Editor access required.")
 
     new_task = Task(
         title=task.title,
         description=task.description,
         priority_level=task.priority_level,
+        due_date=task.due_date,
         project_id=project_id,
         assignee_id=task.assignee_id,
     )
@@ -455,44 +387,41 @@ def create_task(
     return new_task
 
 
+# MVP Req 8: Deep Search & Filtering
 @app.get("/projects/{project_id}/tasks", response_model=List[schemas.TaskResponse])
 def get_project_tasks(
     project_id: int,
-    skip: int = 0,
-    limit: int = 100,
+    keyword: Optional[str] = Query(None, description="Search in title or description"),
+    assignee_id: Optional[int] = Query(None, description="Filter by user ID"),
+    status: Optional[str] = Query(None, description="Filter by status (e.g., 'To Do')"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    project = (
-        db.query(Project)
-        .filter(Project.id == project_id, Project.is_deleted == False)  # noqa: E712
-        .first()
-    )
+    project = db.query(Project).filter_by(id=project_id, is_deleted=False).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # RBAC: Any member (Admin, Editor, or Viewer) can view tasks
-    membership = (
-        db.query(WorkspaceMembership)
-        .filter(
-            WorkspaceMembership.workspace_id == project.workspace_id,
-            WorkspaceMembership.user_id == current_user.id,
-        )
+    if (
+        not db.query(WorkspaceMembership)
+        .filter_by(workspace_id=project.workspace_id, user_id=current_user.id)
         .first()
-    )
+    ):
+        raise HTTPException(status_code=403, detail="Not authorized.")
 
-    if not membership:
-        raise HTTPException(
-            status_code=403, detail="Not authorized to view this project."
+    query = db.query(Task).filter_by(project_id=project_id, is_deleted=False)
+
+    if keyword:
+        query = query.filter(
+            or_(
+                Task.title.ilike(f"%{keyword}%"), Task.description.ilike(f"%{keyword}%")
+            )
         )
+    if assignee_id:
+        query = query.filter(Task.assignee_id == assignee_id)
+    if status:
+        query = query.filter(Task.status == status)
 
-    return (
-        db.query(Task)
-        .filter(Task.project_id == project_id, Task.is_deleted == False)  # noqa: E712
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    return query.all()
 
 
 @app.put("/tasks/{task_id}", response_model=schemas.TaskResponse)
@@ -502,28 +431,17 @@ def update_task_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    task = (
-        db.query(Task)
-        .filter(Task.id == task_id, Task.is_deleted == False)  # noqa: E712
-        .first()
-    )
+    task = db.query(Task).filter_by(id=task_id, is_deleted=False).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    # RBAC: Admins and Editors can edit tasks, Viewers cannot
     membership = (
         db.query(WorkspaceMembership)
-        .filter(
-            WorkspaceMembership.workspace_id == task.project.workspace_id,
-            WorkspaceMembership.user_id == current_user.id,
-        )
+        .filter_by(workspace_id=task.project.workspace_id, user_id=current_user.id)
         .first()
     )
-
     if not membership or membership.role not in ["admin", "editor"]:
-        raise HTTPException(
-            status_code=403, detail="Not authorized. Editor access required."
-        )
+        raise HTTPException(status_code=403, detail="Editor access required.")
 
     task.status = task_update.status
     db.commit()
@@ -531,41 +449,6 @@ def update_task_status(
     return task
 
 
-@app.delete("/tasks/{task_id}")
-def delete_task(
-    task_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    task = (
-        db.query(Task)
-        .filter(Task.id == task_id, Task.is_deleted == False)  # noqa: E712
-        .first()
-    )
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    # RBAC: Admins and Editors can soft-delete tasks, Viewers cannot
-    membership = (
-        db.query(WorkspaceMembership)
-        .filter(
-            WorkspaceMembership.workspace_id == task.project.workspace_id,
-            WorkspaceMembership.user_id == current_user.id,
-        )
-        .first()
-    )
-
-    if not membership or membership.role not in ["admin", "editor"]:
-        raise HTTPException(
-            status_code=403, detail="Not authorized. Editor access required."
-        )
-
-    task.is_deleted = True
-    task.deleted_at = datetime.now(timezone.utc)
-    db.commit()
-    return {"status": "success", "message": "Task moved to trash"}
-
-
 @app.get("/")
 def read_root():
-    return {"status": "success", "message": "Orbit Backend is officially running!"}
+    return {"message": "Orbit Backend MVP V1 running!"}
