@@ -3,7 +3,16 @@ from dotenv import load_dotenv
 import redis
 from fastapi import Request, FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from database import get_db, User, Workspace, Project, Task, WorkspaceMembership
+from database import (
+    get_db,
+    User,
+    Workspace,
+    Project,
+    Task,
+    WorkspaceMembership,
+    Comment,
+    Notification,
+)
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 import bcrypt
@@ -143,24 +152,17 @@ def login(
 @app.post("/logout")
 def logout(token: str = Depends(oauth2_scheme)):
     try:
-        # 1. Decode the token payload
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        expire_timestamp = payload.get("exp")
-
-        # 2. THE GUARD CLAUSE: Explicitly handle the 'None' case
+        expire_timestamp = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM]).get(
+            "exp"
+        )
         if expire_timestamp is None:
             raise HTTPException(
                 status_code=401, detail="Invalid token: Missing expiration claim"
             )
 
-        # 3. Safe Math: Pylance now knows expire_timestamp is definitely a float
-        current_timestamp = datetime.now(timezone.utc).timestamp()
-        time_remaining = int(expire_timestamp - current_timestamp)
-
-        # 4. Blacklist the token in Redis
+        time_remaining = int(expire_timestamp - datetime.now(timezone.utc).timestamp())
         if time_remaining > 0:
             redis_client.set(name=token, value="revoked", ex=time_remaining)
-
         return {"status": "success", "message": "Successfully logged out"}
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -195,7 +197,6 @@ def get_user_workspaces(user_id: int, db: Session = Depends(get_db)):
     )  # noqa: E712
 
 
-# MVP Req 2: Invite Users to Workspace
 @app.post(
     "/workspaces/{workspace_id}/members",
     response_model=schemas.WorkspaceMembershipResponse,
@@ -241,13 +242,120 @@ def invite_user_to_workspace(
     new_membership = WorkspaceMembership(
         workspace_id=workspace_id, user_id=invited_user.id, role=invite.role
     )
+
+    # Notify the user they were invited!
+    notification = Notification(
+        user_id=invited_user.id,
+        message=f"You were invited to workspace: {workspace.name}",
+    )
+    db.add(notification)
+
     db.add(new_membership)
     db.commit()
     db.refresh(new_membership)
     return new_membership
 
 
-# MVP Req 9: Analytics Dashboard
+@app.put(
+    "/workspaces/{workspace_id}/members/{user_id}",
+    response_model=schemas.WorkspaceMembershipResponse,
+)
+def update_member_role(
+    workspace_id: int,
+    user_id: int,
+    role_update: schemas.RoleUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # 1. Verify requester is an Admin
+    admin_check = (
+        db.query(WorkspaceMembership)
+        .filter_by(workspace_id=workspace_id, user_id=current_user.id, role="admin")
+        .first()
+    )
+    if not admin_check:
+        raise HTTPException(status_code=403, detail="Only Admins can change roles.")
+
+    # 2. Find the target user's membership
+    target_membership = (
+        db.query(WorkspaceMembership)
+        .filter_by(workspace_id=workspace_id, user_id=user_id)
+        .first()
+    )
+    if not target_membership:
+        raise HTTPException(
+            status_code=404, detail="User is not a member of this workspace."
+        )
+
+    # 3. THE LAST ADMIN PARADOX: Prevent demoting the only admin
+    if target_membership.role == "admin" and role_update.role != "admin":
+        admin_count = (
+            db.query(WorkspaceMembership)
+            .filter_by(workspace_id=workspace_id, role="admin")
+            .count()
+        )
+        if admin_count <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot demote the last admin. Promote another user to admin first.",
+            )
+
+    # 4. Apply the change
+    target_membership.role = role_update.role
+    db.commit()
+    db.refresh(target_membership)
+    return target_membership
+
+
+@app.delete("/workspaces/{workspace_id}/members/{user_id}")
+def remove_member(
+    workspace_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # 1. Find the target user's membership
+    target_membership = (
+        db.query(WorkspaceMembership)
+        .filter_by(workspace_id=workspace_id, user_id=user_id)
+        .first()
+    )
+    if not target_membership:
+        raise HTTPException(
+            status_code=404, detail="User is not a member of this workspace."
+        )
+
+    # 2. Authorization: Requester must be an Admin OR the user is voluntarily leaving
+    if current_user.id != user_id:
+        admin_check = (
+            db.query(WorkspaceMembership)
+            .filter_by(workspace_id=workspace_id, user_id=current_user.id, role="admin")
+            .first()
+        )
+        if not admin_check:
+            raise HTTPException(
+                status_code=403, detail="Only Admins can remove other users."
+            )
+
+    # 3. THE LAST ADMIN PARADOX: Prevent the last admin from leaving or being kicked
+    if target_membership.role == "admin":
+        admin_count = (
+            db.query(WorkspaceMembership)
+            .filter_by(workspace_id=workspace_id, role="admin")
+            .count()
+        )
+        if admin_count <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot remove the last admin. Promote another user to admin or delete the workspace.",
+            )
+
+    # 4. Execute the off-boarding
+    db.delete(target_membership)
+    db.commit()
+    return {"status": "success", "message": "User successfully removed from workspace."}
+
+
 @app.get(
     "/workspaces/{workspace_id}/analytics", response_model=schemas.AnalyticsResponse
 )
@@ -287,10 +395,8 @@ def get_workspace_analytics(
         .all()
     )  # noqa: E712
 
-    # Process SQLAlchemy Aggregation into a dictionary
     status_counts = {status: count for status, count in status_aggregation}
 
-    # Count Overdue
     current_time = datetime.now(timezone.utc)
     overdue_tasks = tasks_query.filter(
         Task.due_date < current_time, Task.status != "Done"
@@ -352,7 +458,7 @@ def get_workspace_projects(
 
 
 # ==========================================
-# TASK ROUTES (Search & Filters)
+# TASK ROUTES
 # ==========================================
 @app.post("/projects/{project_id}/tasks", response_model=schemas.TaskResponse)
 def create_task(
@@ -381,19 +487,28 @@ def create_task(
         project_id=project_id,
         assignee_id=task.assignee_id,
     )
+
+    # Notify the assignee if someone else assigns them
+    if task.assignee_id and task.assignee_id != current_user.id:
+        db.add(
+            Notification(
+                user_id=task.assignee_id,
+                message=f"You were assigned to a new task: {task.title}",
+            )
+        )
+
     db.add(new_task)
     db.commit()
     db.refresh(new_task)
     return new_task
 
 
-# MVP Req 8: Deep Search & Filtering
 @app.get("/projects/{project_id}/tasks", response_model=List[schemas.TaskResponse])
 def get_project_tasks(
     project_id: int,
     keyword: Optional[str] = Query(None, description="Search in title or description"),
     assignee_id: Optional[int] = Query(None, description="Filter by user ID"),
-    status: Optional[str] = Query(None, description="Filter by status (e.g., 'To Do')"),
+    status: Optional[str] = Query(None, description="Filter by status"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -447,6 +562,106 @@ def update_task_status(
     db.commit()
     db.refresh(task)
     return task
+
+
+# ==========================================
+# COMMENTS & NOTIFICATIONS ROUTES
+# ==========================================
+@app.post("/tasks/{task_id}/comments", response_model=schemas.CommentResponse)
+def create_comment(
+    task_id: int,
+    comment: schemas.CommentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = db.query(Task).filter_by(id=task_id, is_deleted=False).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    membership = (
+        db.query(WorkspaceMembership)
+        .filter_by(workspace_id=task.project.workspace_id, user_id=current_user.id)
+        .first()
+    )
+    if not membership:
+        raise HTTPException(status_code=403, detail="Not authorized.")
+
+    new_comment = Comment(
+        content=comment.content, task_id=task_id, author_id=current_user.id
+    )
+
+    # Notify Assignee of the new comment (if the commenter isn't the assignee themselves)
+    if task.assignee_id and task.assignee_id != current_user.id:
+        notif = Notification(
+            user_id=task.assignee_id,
+            message=f"{current_user.email} commented on your task: {task.title}",
+        )
+        db.add(notif)
+
+    db.add(new_comment)
+    db.commit()
+    db.refresh(new_comment)
+    return new_comment
+
+
+@app.get("/tasks/{task_id}/comments", response_model=List[schemas.CommentResponse])
+def get_task_comments(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = db.query(Task).filter_by(id=task_id, is_deleted=False).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if (
+        not db.query(WorkspaceMembership)
+        .filter_by(workspace_id=task.project.workspace_id, user_id=current_user.id)
+        .first()
+    ):
+        raise HTTPException(status_code=403, detail="Not authorized.")
+
+    return (
+        db.query(Comment)
+        .filter_by(task_id=task_id)
+        .order_by(Comment.created_at.asc())
+        .all()
+    )
+
+
+@app.get("/notifications", response_model=List[schemas.NotificationResponse])
+def get_user_notifications(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    return (
+        db.query(Notification)
+        .filter_by(user_id=current_user.id)
+        .order_by(Notification.created_at.desc())
+        .all()
+    )
+
+
+@app.put("/notifications/{notif_id}/read", response_model=schemas.NotificationResponse)
+def mark_notification_read(
+    notif_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    notif = (
+        db.query(Notification).filter_by(id=notif_id, user_id=current_user.id).first()
+    )
+    if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+    notif.is_read = True
+    db.commit()
+    db.refresh(notif)
+    return notif
+
+
+@app.get("/users/me", response_model=schemas.UserResponse)
+def get_me(current_user: User = Depends(get_current_user)):
+    return current_user
 
 
 @app.get("/")
