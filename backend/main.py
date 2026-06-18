@@ -566,6 +566,7 @@ def get_workspace_analytics(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # 1. Auth Check
     membership = (
         db.query(WorkspaceMembership)
         .filter_by(workspace_id=workspace_id, user_id=current_user.id)
@@ -574,6 +575,7 @@ def get_workspace_analytics(
     if not membership:
         raise HTTPException(status_code=403, detail="Not authorized")
 
+    # 2. Standard Analytics (2-Table Join)
     tasks_query = (
         db.query(Task)
         .join(Project)
@@ -602,11 +604,36 @@ def get_workspace_analytics(
     overdue_tasks = tasks_query.filter(
         Task.due_date < current_time, Task.status != "Done"
     ).count()
+    bottleneck_data = (
+        db.query(User.email, func.count(Task.id).label("overdue_count"))
+        .select_from(Workspace)
+        .join(Project, Project.workspace_id == Workspace.id)
+        .join(Task, Task.project_id == Project.id)
+        .join(User, Task.assignee_id == User.id)
+        .filter(
+            Workspace.id == workspace_id,
+            Task.due_date < current_time,
+            Task.status != "Done",
+            Task.is_deleted == False,
+            Project.is_deleted == False,
+        )
+        .group_by(User.email)
+        .order_by(func.count(Task.id).desc())
+        .limit(5)
+        .all()
+    )
+
+    # Format the data for Pydantic
+    bottlenecks = [
+        {"user_email": row.email, "overdue_count": row.overdue_count}
+        for row in bottleneck_data
+    ]
 
     return {
         "total_tasks": total_tasks,
         "status_counts": status_counts,
         "overdue_tasks": overdue_tasks,
+        "bottlenecks": bottlenecks,
     }
 
 
