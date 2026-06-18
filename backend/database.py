@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     create_engine,
     ForeignKey,
@@ -37,7 +37,6 @@ class WorkspaceMembership(Base):
     )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
 
-    # RBAC Role: "admin", "editor", or "viewer"
     role: Mapped[str] = mapped_column(String, default="viewer")
 
     workspace: Mapped["Workspace"] = relationship(back_populates="memberships")
@@ -55,6 +54,13 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     tasks: Mapped[list["Task"]] = relationship(back_populates="assignee")
+    # New Relationships for Sprint 2
+    comments: Mapped[list["Comment"]] = relationship(
+        back_populates="author", cascade="all, delete-orphan"
+    )
+    notifications: Mapped[list["Notification"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class Workspace(Base):
@@ -101,8 +107,6 @@ class Task(Base):
     description: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="To Do")
     priority_level: Mapped[int] = mapped_column(default=1)
-
-    # MVP Requirement 3: Due Date Support
     due_date: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -117,10 +121,46 @@ class Task(Base):
     project: Mapped["Project"] = relationship(back_populates="tasks")
     assignee: Mapped["User"] = relationship(back_populates="tasks")
 
+    # New Relationship for Sprint 2
+    comments: Mapped[list["Comment"]] = relationship(
+        back_populates="task", cascade="all, delete-orphan"
+    )
+
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class Comment(Base):
+    __tablename__ = "comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    content: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+
+    task: Mapped["Task"] = relationship(back_populates="comments")
+    author: Mapped["User"] = relationship(back_populates="comments")
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    message: Mapped[str] = mapped_column(String, nullable=False)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+
+    user: Mapped["User"] = relationship(back_populates="notifications")
 
 
 def get_db():
