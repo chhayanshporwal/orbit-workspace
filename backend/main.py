@@ -25,8 +25,10 @@ app = FastAPI()
 # ==========================================
 # REDIS & RATE LIMITING INFRASTRUCTURE
 # ==========================================
-redis_client = redis.Redis(host="redis", port=6379, db=0, decode_responses=True)
-limiter = Limiter(key_func=get_remote_address, storage_uri="redis://redis:6379/0")
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+
+redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+limiter = Limiter(key_func=get_remote_address, storage_uri=REDIS_URL)
 
 
 def custom_rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -80,7 +82,8 @@ def get_current_user(
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str | None = payload.get("sub")
     except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        # Fixed to match standard OAuth2 expectations in tests
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
 
     user = db.query(User).filter(User.email == email).first()
     if not user:
@@ -190,7 +193,7 @@ def get_user_workspaces(user_id: int, db: Session = Depends(get_db)):
     return (
         db.query(Workspace)
         .join(WorkspaceMembership)
-        .filter(WorkspaceMembership.user_id == user_id, Workspace.is_deleted == False)
+        .filter(WorkspaceMembership.user_id == user_id, Workspace.is_deleted.is_(False))
         .all()
     )  # noqa: E712
 
@@ -208,7 +211,7 @@ def invite_user_to_workspace(
 ):
     workspace = (
         db.query(Workspace)
-        .filter(Workspace.id == workspace_id, Workspace.is_deleted == False)
+        .filter(Workspace.id == workspace_id, Workspace.is_deleted.is_(False))
         .first()
     )  # noqa: E712
     if not workspace:
@@ -269,8 +272,8 @@ def get_workspace_analytics(
         .join(Project)
         .filter(
             Project.workspace_id == workspace_id,
-            Task.is_deleted == False,
-            Project.is_deleted == False,
+            Task.is_deleted.is_(False),
+            Project.is_deleted.is_(False),
         )
     )  # noqa: E712
 
@@ -280,8 +283,8 @@ def get_workspace_analytics(
         .join(Project)
         .filter(
             Project.workspace_id == workspace_id,
-            Task.is_deleted == False,
-            Project.is_deleted == False,
+            Task.is_deleted.is_(False),
+            Project.is_deleted.is_(False),
         )
         .group_by(Task.status)
         .all()
@@ -394,6 +397,8 @@ def get_project_tasks(
     keyword: Optional[str] = Query(None, description="Search in title or description"),
     assignee_id: Optional[int] = Query(None, description="Filter by user ID"),
     status: Optional[str] = Query(None, description="Filter by status (e.g., 'To Do')"),
+    skip: int = Query(0, ge=0, description="Pagination skip"),
+    limit: int = Query(100, ge=1, description="Pagination limit"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -421,7 +426,7 @@ def get_project_tasks(
     if status:
         query = query.filter(Task.status == status)
 
-    return query.all()
+    return query.offset(skip).limit(limit).all()
 
 
 @app.put("/tasks/{task_id}", response_model=schemas.TaskResponse)
