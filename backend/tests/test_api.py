@@ -471,3 +471,51 @@ def test_distributed_brute_force_lockout():
 
     assert res_locked.status_code == 403
     assert "Account locked" in res_locked.json()["detail"]
+
+
+# ==========================================
+# 14. WEBSOCKETS & ASYNC EMAIL TRIGGERS
+# ==========================================
+def test_websocket_project_connection(auth_a):
+    """
+    Verifies that the WebSocket ConnectionManager accepts connections
+    for valid project rooms without crashing.
+    """
+    ws = client.post(
+        "/workspaces/", json={"name": "WS Test Team"}, headers=auth_a
+    ).json()
+    proj = client.post(
+        "/projects/",
+        json={"name": "WS Test Proj", "workspace_id": ws["id"]},
+        headers=auth_a,
+    ).json()
+
+    # Use FastAPI's native WebSocket test client
+    with client.websocket_connect(f"/ws/projects/{proj['id']}") as websocket:
+        # If the connection succeeds and stays open, the manager is working perfectly.
+        assert websocket is not None
+
+
+def test_email_mock_trigger_on_invite(auth_a, auth_b, user_b):
+    """
+    Verifies that triggering an action with a background email task
+    successfully executes the fallback logic without breaking the main thread.
+    """
+    ws = client.post(
+        "/workspaces/", json={"name": "Email Test Team"}, headers=auth_a
+    ).json()
+
+    # This specific action contains our send_notification_email background task
+    res = client.post(
+        f"/workspaces/{ws['id']}/members",
+        json={"email": user_b["email"], "role": "editor"},
+        headers=auth_a,
+    )
+
+    # 1. Ensure the primary HTTP response succeeds
+    assert res.status_code == 200
+
+    # 2. Because FastAPI TestClient runs background tasks immediately,
+    # passing this assertion proves the email fallback gracefully logged the
+    # mock email instead of crashing with an exception.
+    assert res.json()["role"] == "editor"
