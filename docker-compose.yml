@@ -39,6 +39,7 @@ services:
       - DATABASE_URL=postgresql+psycopg2://orbit_admin:supersecretpassword@db:5432/orbit_database
     depends_on:
       - db
+      - redis
     volumes:
       - ./backend:/app
 
