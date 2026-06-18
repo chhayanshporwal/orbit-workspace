@@ -2,3 +2,10 @@ fastapi
 uvicorn
 psycopg2-binary
 sqlalchemy
+pydantic
+PyJWT
+python-multipart
+alembic
+pytest
+httpx
+bcrypt
