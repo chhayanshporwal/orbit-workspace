@@ -4,6 +4,7 @@ import redis
 from database import (
     SessionLocal,
 )
+from algorithms import calculate_urgency_score, workload_balancer
 from fastapi import (
     Request,
     FastAPI,
@@ -776,6 +777,87 @@ def create_task(
     db.refresh(new_task)
 
     # TRIGGER REAL-TIME BROADCAST
+    background_tasks.add_task(
+        manager.broadcast_to_project,
+        project_id,
+        {"event": "task_created", "task_id": new_task.id},
+    )
+
+    return new_task
+
+
+@app.post(
+    "/projects/{project_id}/tasks/auto-assign", response_model=schemas.TaskResponse
+)
+def create_and_auto_assign_task(
+    project_id: int,
+    task: schemas.TaskCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Uses custom algorithms to dynamically assign the task to the workspace member
+    with the lowest current workload urgency.
+    """
+    project = db.query(Project).filter_by(id=project_id, is_deleted=False).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    membership = (
+        db.query(WorkspaceMembership)
+        .filter_by(workspace_id=project.workspace_id, user_id=current_user.id)
+        .first()
+    )
+    if not membership or membership.role not in ["admin", "editor"]:
+        raise HTTPException(status_code=403, detail="Editor access required.")
+
+    workspace_users = (
+        db.query(WorkspaceMembership).filter_by(workspace_id=project.workspace_id).all()
+    )
+    user_ids = [m.user_id for m in workspace_users]
+
+    active_tasks = (
+        db.query(Task)
+        .join(Project)
+        .filter(
+            Project.workspace_id == project.workspace_id,
+            Task.assignee_id.in_(user_ids),
+            Task.status != "Done",
+            Task.is_deleted == False,
+        )
+        .all()
+    )
+
+    workloads = []
+    for uid in user_ids:
+        user_tasks = [
+            {"priority": t.priority_level, "due_date": t.due_date}
+            for t in active_tasks
+            if t.assignee_id == uid
+        ]
+        workloads.append({"user_id": uid, "tasks": user_tasks})
+
+    best_assignee_id = workload_balancer(workloads)
+
+    new_task = Task(
+        title=task.title,
+        description=task.description,
+        priority_level=task.priority_level,
+        due_date=task.due_date,
+        project_id=project_id,
+        assignee_id=best_assignee_id,
+    )
+
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+
+    if best_assignee_id:
+        msg = f"Smart Assign: You were automatically routed a new task '{task.title}' based on your bandwidth."
+        db.add(Notification(user_id=best_assignee_id, message=msg))
+        db.commit()
+
     background_tasks.add_task(
         manager.broadcast_to_project,
         project_id,
