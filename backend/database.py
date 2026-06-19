@@ -54,7 +54,6 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     tasks: Mapped[list["Task"]] = relationship(back_populates="assignee")
-    # New Relationships for Sprint 2
     comments: Mapped[list["Comment"]] = relationship(
         back_populates="author", cascade="all, delete-orphan"
     )
@@ -121,7 +120,6 @@ class Task(Base):
     project: Mapped["Project"] = relationship(back_populates="tasks")
     assignee: Mapped["User"] = relationship(back_populates="tasks")
 
-    # New Relationship for Sprint 2
     comments: Mapped[list["Comment"]] = relationship(
         back_populates="task", cascade="all, delete-orphan"
     )

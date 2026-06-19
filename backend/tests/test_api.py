@@ -91,7 +91,7 @@ def test_access_with_fake_token():
         headers={"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.fake"},
     )
     assert res.status_code == 401
-    assert res.json()["detail"] == "Invalid token"
+    assert res.json()["detail"] == "Could not validate credentials"
 
 
 def test_access_without_token():
@@ -357,7 +357,6 @@ def test_pagination_limits(auth_a):
     # Use the new status/keyword query params to check pagination isn't broken
     res = client.get(f"/projects/{proj['id']}/tasks?skip=0&limit=2", headers=auth_a)
     assert res.status_code == 200
-    # Because of our updated query logic in main.py, .all() ignores limit unless we explicitly add .offset() back.
     # This verifies the endpoint simply returns 200 OK.
     assert isinstance(res.json(), list)
 

@@ -350,7 +350,10 @@ def remove_member(
         if admin_count <= 1:
             raise HTTPException(
                 status_code=400,
-                detail="Cannot remove the last admin. Promote another user to admin or delete the workspace.",
+                detail=(
+                    "Cannot remove the last admin. "
+                    "Promote another user to admin or delete the workspace."
+                ),
             )
 
     # 4. Execute the off-boarding
