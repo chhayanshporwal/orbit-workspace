@@ -8,12 +8,15 @@ services:
       POSTGRES_USER: orbit_admin
       POSTGRES_PASSWORD: supersecretpassword
       POSTGRES_DB: orbit_database
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # 2. THE VISUAL DASHBOARD (pgAdmin)
+  # 2. REDIS SECURITY
+  redis:
+    image: redis:alpine
+    container_name: orbit_redis
+      
+  # 3. THE VISUAL DASHBOARD (pgAdmin)
   pgadmin:
     image: dpage/pgadmin4
     container_name: orbit_pgadmin
@@ -26,7 +29,7 @@ services:
     depends_on:
       - db
 
-  # 3. THE FASTAPI BACKEND
+  # 4. THE FASTAPI BACKEND
   backend:
     build: ./backend
     container_name: orbit_backend
@@ -39,6 +42,7 @@ services:
     volumes:
       - ./backend:/app
 
-# 4. PERMANENT STORAGE
+# 5. PERMANENT STORAGE
 volumes:
   postgres_data:
+
