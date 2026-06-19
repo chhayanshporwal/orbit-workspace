@@ -3,6 +3,10 @@ from fastapi.testclient import TestClient
 from main import app, redis_client
 import uuid
 
+from database import engine, Base
+
+Base.metadata.create_all(bind=engine)
+
 client = TestClient(app)
 
 
@@ -114,9 +118,10 @@ def test_create_workspace(auth_a):
 
 
 def test_get_user_workspaces(auth_a, user_a):
+    # For this test, we'll just register a quick temporary user to get a clean ID
     temp_user = {
         "email": f"temp_{uuid.uuid4().hex[:8]}@orbit.com",
-        "password": "temp_password123",
+        "password": "password123",
     }
     temp_id = client.post("/users/", json=temp_user).json()["id"]
 
