@@ -4,7 +4,7 @@ import redis
 from database import (
     SessionLocal,
 )
-from algorithms import calculate_urgency_score, workload_balancer
+from algorithms import workload_balancer
 from fastapi import (
     Request,
     FastAPI,
@@ -69,7 +69,7 @@ def check_approaching_deadlines():
                 Task.due_date > now,
                 Task.due_date <= tomorrow,
                 Task.status != "Done",
-                Task.is_deleted == False,
+                Task.is_deleted.is_(False),
             )
             .all()
         )
@@ -173,6 +173,8 @@ def get_current_user(
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str | None = payload.get("sub")
     except jwt.InvalidTokenError:
+        # Fixed to match standard OAuth2 expectations in tests
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
         # Fixed to match standard OAuth2 expectations in tests
         raise HTTPException(status_code=401, detail="Could not validate credentials")
 
@@ -320,6 +322,7 @@ def get_user_workspaces(user_id: int, db: Session = Depends(get_db)):
         db.query(Workspace)
         .join(WorkspaceMembership)
         .filter(WorkspaceMembership.user_id == user_id, Workspace.is_deleted.is_(False))
+        .filter(WorkspaceMembership.user_id == user_id, Workspace.is_deleted.is_(False))
         .all()
     )
 
@@ -337,6 +340,7 @@ def invite_user_to_workspace(
 ):
     workspace = (
         db.query(Workspace)
+        .filter(Workspace.id == workspace_id, Workspace.is_deleted.is_(False))
         .filter(Workspace.id == workspace_id, Workspace.is_deleted.is_(False))
         .first()
     )
@@ -498,7 +502,7 @@ def remove_member(
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Cannot remove the last admin. "
+                    "Cannot remove the last admin."
                     "Promote another user to admin or delete the workspace."
                 ),
             )
@@ -533,7 +537,7 @@ def delete_workspace(
 ):
     workspace = (
         db.query(Workspace)
-        .filter(Workspace.id == workspace_id, Workspace.is_deleted == False)
+        .filter(Workspace.id == workspace_id, Workspace.is_deleted.is_(False))
         .first()
     )
     if not workspace:
@@ -615,8 +619,8 @@ def get_workspace_analytics(
             Workspace.id == workspace_id,
             Task.due_date < current_time,
             Task.status != "Done",
-            Task.is_deleted == False,
-            Project.is_deleted == False,
+            Task.is_deleted.is_(False),
+            Project.is_deleted.is_(False),
         )
         .group_by(User.email)
         .order_by(func.count(Task.id).desc())
@@ -698,7 +702,7 @@ def delete_project(
 ):
     project = (
         db.query(Project)
-        .filter(Project.id == project_id, Project.is_deleted == False)
+        .filter(Project.id == project_id, Project.is_deleted.is_(False))
         .first()
     )
     if not project:
@@ -824,7 +828,7 @@ def create_and_auto_assign_task(
             Project.workspace_id == project.workspace_id,
             Task.assignee_id.in_(user_ids),
             Task.status != "Done",
-            Task.is_deleted == False,
+            Task.is_deleted.is_(False),
         )
         .all()
     )
@@ -854,7 +858,10 @@ def create_and_auto_assign_task(
     db.refresh(new_task)
 
     if best_assignee_id:
-        msg = f"Smart Assign: You were automatically routed a new task '{task.title}' based on your bandwidth."
+        msg = (
+            f"Smart Assign: You were automatically routed a new task "
+            f"'{task.title}' based on your bandwidth."
+        )
         db.add(Notification(user_id=best_assignee_id, message=msg))
         db.commit()
 
@@ -912,7 +919,7 @@ def update_task_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    task = db.query(Task).filter(Task.id == task_id, Task.is_deleted == False).first()
+    task = db.query(Task).filter(Task.id == task_id, Task.is_deleted.is_(False)).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -951,7 +958,7 @@ def delete_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    task = db.query(Task).filter(Task.id == task_id, Task.is_deleted == False).first()
+    task = db.query(Task).filter(Task.id == task_id, Task.is_deleted.is_(False)).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
