@@ -12,7 +12,6 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    # Strict validation: Minimum 8 characters for passwords
     password: str = Field(..., min_length=8, max_length=128)
 
 
@@ -37,11 +36,14 @@ class WorkspaceInvite(BaseModel):
     role: Literal["admin", "editor", "viewer"]
 
 
+class RoleUpdate(BaseModel):
+    role: Literal["admin", "editor", "viewer"]
+
+
 # ==========================================
 # 3. WORKSPACE SCHEMAS
 # ==========================================
 class WorkspaceBase(BaseModel):
-    # Strict Validation: Cannot be empty, max 100 chars
     name: str = Field(..., min_length=1, max_length=100)
 
 
@@ -83,9 +85,7 @@ class ProjectResponse(ProjectBase):
 class TaskBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=2000)
-    priority_level: int = Field(
-        default=1, ge=1, le=5
-    )  # Restrict priorities from 1 to 5
+    priority_level: int = Field(default=1, ge=1, le=5)
     assignee_id: Optional[int] = None
     due_date: Optional[datetime] = None
 
@@ -113,9 +113,39 @@ class TaskResponse(TaskBase):
 
 
 # ==========================================
-# 6. ANALYTICS SCHEMAS (MVP Req 9)
+# 6. ANALYTICS SCHEMAS
 # ==========================================
 class AnalyticsResponse(BaseModel):
     total_tasks: int
     status_counts: Dict[str, int]
     overdue_tasks: int
+
+
+# ==========================================
+# 7. COMMENTS & NOTIFICATIONS
+# ==========================================
+class CommentBase(BaseModel):
+    content: str = Field(..., min_length=1, max_length=2000)
+
+
+class CommentCreate(CommentBase):
+    pass
+
+
+class CommentResponse(CommentBase):
+    id: int
+    content: str
+    created_at: datetime
+    task_id: int
+    author_id: int
+    author: UserResponse  # Returns who wrote it for the frontend
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationResponse(BaseModel):
+    id: int
+    message: str
+    is_read: bool
+    created_at: datetime
+    user_id: int
+    model_config = ConfigDict(from_attributes=True)
