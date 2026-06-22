@@ -1,7 +1,20 @@
 import os
 from dotenv import load_dotenv
 import redis
-from fastapi import Request, FastAPI, Depends, HTTPException, Query
+from database import (
+    SessionLocal,
+)
+from algorithms import workload_balancer
+from fastapi import (
+    Request,
+    FastAPI,
+    Depends,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    BackgroundTasks,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from database import (
     get_db,
@@ -27,9 +40,78 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+# IMPORT THE NEW EMAIL SERVICE
+from email_service import send_notification_email
+
+# Modern FastAPI Lifespan imports
+from contextlib import asynccontextmanager
+from apscheduler.schedulers.background import BackgroundScheduler
+
 load_dotenv()
 
-app = FastAPI()
+
+# ==========================================
+# TIME-DRIVEN CRON WORKER
+# ==========================================
+def check_approaching_deadlines():
+    """
+    Runs periodically to check for tasks due in the next 24 hours.
+    Generates an in-app notification for the assignee.
+    """
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        tomorrow = now + timedelta(days=1)
+
+        urgent_tasks = (
+            db.query(Task)
+            .filter(
+                Task.due_date > now,
+                Task.due_date <= tomorrow,
+                Task.status != "Done",
+                Task.is_deleted.is_(False),
+            )
+            .all()
+        )
+
+        for task in urgent_tasks:
+            if task.assignee_id:
+                msg = f"⏳ Reminder: The task '{task.title}' is due in less than 24 hours!"
+                existing_notif = (
+                    db.query(Notification)
+                    .filter(
+                        Notification.user_id == task.assignee_id,
+                        Notification.message == msg,
+                        Notification.created_at >= now - timedelta(hours=24),
+                    )
+                    .first()
+                )
+
+                if not existing_notif:
+                    db.add(Notification(user_id=task.assignee_id, message=msg))
+
+        db.commit()
+    except Exception as e:
+        import logging
+
+        logging.error(f"Cron Worker Error: {e}")
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(check_approaching_deadlines, "interval", hours=1)
+    scheduler.start()
+    yield
+    # Shutdown logic
+    scheduler.shutdown()
+
+
+# Initialize FastAPI with the modern lifespan context
+app = FastAPI(lifespan=lifespan)
 
 # ==========================================
 # REDIS & RATE LIMITING INFRASTRUCTURE
@@ -93,11 +175,55 @@ def get_current_user(
     except jwt.InvalidTokenError:
         # Fixed to match standard OAuth2 expectations in tests
         raise HTTPException(status_code=401, detail="Could not validate credentials")
+        # Fixed to match standard OAuth2 expectations in tests
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
 
     user = db.query(User).filter(User.email == email).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+# ==========================================
+# WEBSOCKET MANAGER (Real-Time)
+# ==========================================
+class ConnectionManager:
+    def __init__(self):
+        # Maps project_id to a list of active WebSocket connections
+        self.active_connections: dict[int, List[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, project_id: int):
+        await websocket.accept()
+        if project_id not in self.active_connections:
+            self.active_connections[project_id] = []
+        self.active_connections[project_id].append(websocket)
+
+    def disconnect(self, websocket: WebSocket, project_id: int):
+        if project_id in self.active_connections:
+            if websocket in self.active_connections[project_id]:
+                self.active_connections[project_id].remove(websocket)
+            if not self.active_connections[project_id]:
+                del self.active_connections[project_id]
+
+    async def broadcast_to_project(self, project_id: int, message: dict):
+        if project_id in self.active_connections:
+            # Send the update to every user currently viewing this project
+            for connection in self.active_connections[project_id]:
+                await connection.send_json(message)
+
+
+manager = ConnectionManager()
+
+
+@app.websocket("/ws/projects/{project_id}")
+async def websocket_endpoint(websocket: WebSocket, project_id: int):
+    await manager.connect(websocket, project_id)
+    try:
+        while True:
+            # We keep the socket open. The client just listens.
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, project_id)
 
 
 # ==========================================
@@ -172,7 +298,7 @@ def logout(token: str = Depends(oauth2_scheme)):
 
 
 # ==========================================
-# WORKSPACE & PROJECT ROUTES
+# WORKSPACE ROUTES
 # ==========================================
 @app.post("/workspaces/", response_model=schemas.WorkspaceResponse)
 def create_workspace(
@@ -196,8 +322,9 @@ def get_user_workspaces(user_id: int, db: Session = Depends(get_db)):
         db.query(Workspace)
         .join(WorkspaceMembership)
         .filter(WorkspaceMembership.user_id == user_id, Workspace.is_deleted.is_(False))
+        .filter(WorkspaceMembership.user_id == user_id, Workspace.is_deleted.is_(False))
         .all()
-    )  # noqa: E712
+    )
 
 
 @app.post(
@@ -207,14 +334,16 @@ def get_user_workspaces(user_id: int, db: Session = Depends(get_db)):
 def invite_user_to_workspace(
     workspace_id: int,
     invite: schemas.WorkspaceInvite,
+    background_tasks: BackgroundTasks,  # TIER 1 NOTIFICATION ADDED
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     workspace = (
         db.query(Workspace)
         .filter(Workspace.id == workspace_id, Workspace.is_deleted.is_(False))
+        .filter(Workspace.id == workspace_id, Workspace.is_deleted.is_(False))
         .first()
-    )  # noqa: E712
+    )
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
@@ -246,16 +375,23 @@ def invite_user_to_workspace(
         workspace_id=workspace_id, user_id=invited_user.id, role=invite.role
     )
 
-    # Notify the user they were invited!
-    notification = Notification(
-        user_id=invited_user.id,
-        message=f"You were invited to workspace: {workspace.name}",
-    )
-    db.add(notification)
+    # Database In-App Notification
+    msg = f"You were invited to workspace: {workspace.name}"
+    notification = Notification(user_id=invited_user.id, message=msg)
 
+    db.add(notification)
     db.add(new_membership)
     db.commit()
     db.refresh(new_membership)
+
+    # High-Priority Email Trigger
+    background_tasks.add_task(
+        send_notification_email,
+        to_email=invited_user.email,
+        subject=f"Welcome to Orbit - You've been invited to {workspace.name}",
+        body=msg,
+    )
+
     return new_membership
 
 
@@ -267,10 +403,10 @@ def update_member_role(
     workspace_id: int,
     user_id: int,
     role_update: schemas.RoleUpdate,
+    background_tasks: BackgroundTasks,  # TIER 1 NOTIFICATION ADDED
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # 1. Verify requester is an Admin
     admin_check = (
         db.query(WorkspaceMembership)
         .filter_by(workspace_id=workspace_id, user_id=current_user.id, role="admin")
@@ -279,7 +415,6 @@ def update_member_role(
     if not admin_check:
         raise HTTPException(status_code=403, detail="Only Admins can change roles.")
 
-    # 2. Find the target user's membership
     target_membership = (
         db.query(WorkspaceMembership)
         .filter_by(workspace_id=workspace_id, user_id=user_id)
@@ -290,7 +425,6 @@ def update_member_role(
             status_code=404, detail="User is not a member of this workspace."
         )
 
-    # 3. THE LAST ADMIN PARADOX: Prevent demoting the only admin
     if target_membership.role == "admin" and role_update.role != "admin":
         admin_count = (
             db.query(WorkspaceMembership)
@@ -303,10 +437,29 @@ def update_member_role(
                 detail="Cannot demote the last admin. Promote another user to admin first.",
             )
 
-    # 4. Apply the change
     target_membership.role = role_update.role
     db.commit()
     db.refresh(target_membership)
+
+    # Notify the user of security/role change
+    target_user = db.query(User).filter_by(id=user_id).first()
+    workspace = db.query(Workspace).filter_by(id=workspace_id).first()
+
+    if not target_user or not workspace:
+        raise HTTPException(status_code=404, detail="User or Workspace not found")
+
+    msg = f"Your role in {workspace.name} has been updated to '{role_update.role}'."
+    db.add(Notification(user_id=user_id, message=msg))
+    db.commit()
+
+    # High-Priority Email Trigger
+    background_tasks.add_task(
+        send_notification_email,
+        to_email=target_user.email,
+        subject="Orbit Security Alert: Role Updated",
+        body=msg,
+    )
+
     return target_membership
 
 
@@ -314,10 +467,10 @@ def update_member_role(
 def remove_member(
     workspace_id: int,
     user_id: int,
+    background_tasks: BackgroundTasks,  # TIER 1 NOTIFICATION ADDED
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # 1. Find the target user's membership
     target_membership = (
         db.query(WorkspaceMembership)
         .filter_by(workspace_id=workspace_id, user_id=user_id)
@@ -328,7 +481,6 @@ def remove_member(
             status_code=404, detail="User is not a member of this workspace."
         )
 
-    # 2. Authorization: Requester must be an Admin OR the user is voluntarily leaving
     if current_user.id != user_id:
         admin_check = (
             db.query(WorkspaceMembership)
@@ -340,7 +492,6 @@ def remove_member(
                 status_code=403, detail="Only Admins can remove other users."
             )
 
-    # 3. THE LAST ADMIN PARADOX: Prevent the last admin from leaving or being kicked
     if target_membership.role == "admin":
         admin_count = (
             db.query(WorkspaceMembership)
@@ -351,15 +502,65 @@ def remove_member(
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Cannot remove the last admin. "
+                    "Cannot remove the last admin."
                     "Promote another user to admin or delete the workspace."
                 ),
             )
 
-    # 4. Execute the off-boarding
+    workspace = db.query(Workspace).filter_by(id=workspace_id).first()
+    target_user = db.query(User).filter_by(id=user_id).first()
+
+    if not target_user or not workspace:
+        raise HTTPException(status_code=404, detail="User or Workspace not found")
+
     db.delete(target_membership)
     db.commit()
+
+    # Only send email if the user was kicked out by an admin (not if they left voluntarily)
+    if current_user.id != user_id:
+        msg = f"Your access to the workspace '{workspace.name}' has been revoked."
+        background_tasks.add_task(
+            send_notification_email,
+            to_email=target_user.email,
+            subject="Orbit Security Alert: Workspace Access Revoked",
+            body=msg,
+        )
+
     return {"status": "success", "message": "User successfully removed from workspace."}
+
+
+@app.delete("/workspaces/{workspace_id}")
+def delete_workspace(
+    workspace_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    workspace = (
+        db.query(Workspace)
+        .filter(Workspace.id == workspace_id, Workspace.is_deleted.is_(False))
+        .first()
+    )
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    membership = (
+        db.query(WorkspaceMembership)
+        .filter(
+            WorkspaceMembership.workspace_id == workspace_id,
+            WorkspaceMembership.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not membership or membership.role != "admin":
+        raise HTTPException(
+            status_code=403, detail="Not authorized. Admin access required."
+        )
+
+    workspace.is_deleted = True
+    workspace.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"status": "success", "message": "Workspace moved to trash"}
 
 
 @app.get(
@@ -370,6 +571,7 @@ def get_workspace_analytics(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # 1. Auth Check
     membership = (
         db.query(WorkspaceMembership)
         .filter_by(workspace_id=workspace_id, user_id=current_user.id)
@@ -378,6 +580,7 @@ def get_workspace_analytics(
     if not membership:
         raise HTTPException(status_code=403, detail="Not authorized")
 
+    # 2. Standard Analytics (2-Table Join)
     tasks_query = (
         db.query(Task)
         .join(Project)
@@ -386,7 +589,7 @@ def get_workspace_analytics(
             Task.is_deleted.is_(False),
             Project.is_deleted.is_(False),
         )
-    )  # noqa: E712
+    )
 
     total_tasks = tasks_query.count()
     status_aggregation = (
@@ -399,22 +602,49 @@ def get_workspace_analytics(
         )
         .group_by(Task.status)
         .all()
-    )  # noqa: E712
+    )
 
     status_counts = {status: count for status, count in status_aggregation}
-
     current_time = datetime.now(timezone.utc)
     overdue_tasks = tasks_query.filter(
         Task.due_date < current_time, Task.status != "Done"
     ).count()
+    bottleneck_data = (
+        db.query(User.email, func.count(Task.id).label("overdue_count"))
+        .select_from(Workspace)
+        .join(Project, Project.workspace_id == Workspace.id)
+        .join(Task, Task.project_id == Project.id)
+        .join(User, Task.assignee_id == User.id)
+        .filter(
+            Workspace.id == workspace_id,
+            Task.due_date < current_time,
+            Task.status != "Done",
+            Task.is_deleted.is_(False),
+            Project.is_deleted.is_(False),
+        )
+        .group_by(User.email)
+        .order_by(func.count(Task.id).desc())
+        .limit(5)
+        .all()
+    )
+
+    # Format the data for Pydantic
+    bottlenecks = [
+        {"user_email": row.email, "overdue_count": row.overdue_count}
+        for row in bottleneck_data
+    ]
 
     return {
         "total_tasks": total_tasks,
         "status_counts": status_counts,
         "overdue_tasks": overdue_tasks,
+        "bottlenecks": bottlenecks,
     }
 
 
+# ==========================================
+# PROJECT ROUTES
+# ==========================================
 @app.post("/projects/", response_model=schemas.ProjectResponse)
 def create_project(
     project: schemas.ProjectCreate,
@@ -463,6 +693,49 @@ def get_workspace_projects(
     )
 
 
+@app.delete("/projects/{project_id}")
+def delete_project(
+    project_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    project = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.is_deleted.is_(False))
+        .first()
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    membership = (
+        db.query(WorkspaceMembership)
+        .filter(
+            WorkspaceMembership.workspace_id == project.workspace_id,
+            WorkspaceMembership.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not membership or membership.role != "admin":
+        raise HTTPException(
+            status_code=403, detail="Not authorized. Admin access required."
+        )
+
+    project.is_deleted = True
+    project.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+
+    # TRIGGER REAL-TIME BROADCAST: Tell everyone looking at this board to leave
+    background_tasks.add_task(
+        manager.broadcast_to_project,
+        project_id,
+        {"event": "project_deleted", "project_id": project_id},
+    )
+
+    return {"status": "success", "message": "Project moved to trash"}
+
+
 # ==========================================
 # TASK ROUTES
 # ==========================================
@@ -470,6 +743,7 @@ def get_workspace_projects(
 def create_task(
     project_id: int,
     task: schemas.TaskCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -494,7 +768,6 @@ def create_task(
         assignee_id=task.assignee_id,
     )
 
-    # Notify the assignee if someone else assigns them
     if task.assignee_id and task.assignee_id != current_user.id:
         db.add(
             Notification(
@@ -506,6 +779,98 @@ def create_task(
     db.add(new_task)
     db.commit()
     db.refresh(new_task)
+
+    # TRIGGER REAL-TIME BROADCAST
+    background_tasks.add_task(
+        manager.broadcast_to_project,
+        project_id,
+        {"event": "task_created", "task_id": new_task.id},
+    )
+
+    return new_task
+
+
+@app.post(
+    "/projects/{project_id}/tasks/auto-assign", response_model=schemas.TaskResponse
+)
+def create_and_auto_assign_task(
+    project_id: int,
+    task: schemas.TaskCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Uses custom algorithms to dynamically assign the task to the workspace member
+    with the lowest current workload urgency.
+    """
+    project = db.query(Project).filter_by(id=project_id, is_deleted=False).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    membership = (
+        db.query(WorkspaceMembership)
+        .filter_by(workspace_id=project.workspace_id, user_id=current_user.id)
+        .first()
+    )
+    if not membership or membership.role not in ["admin", "editor"]:
+        raise HTTPException(status_code=403, detail="Editor access required.")
+
+    workspace_users = (
+        db.query(WorkspaceMembership).filter_by(workspace_id=project.workspace_id).all()
+    )
+    user_ids = [m.user_id for m in workspace_users]
+
+    active_tasks = (
+        db.query(Task)
+        .join(Project)
+        .filter(
+            Project.workspace_id == project.workspace_id,
+            Task.assignee_id.in_(user_ids),
+            Task.status != "Done",
+            Task.is_deleted.is_(False),
+        )
+        .all()
+    )
+
+    workloads = []
+    for uid in user_ids:
+        user_tasks = [
+            {"priority": t.priority_level, "due_date": t.due_date}
+            for t in active_tasks
+            if t.assignee_id == uid
+        ]
+        workloads.append({"user_id": uid, "tasks": user_tasks})
+
+    best_assignee_id = workload_balancer(workloads)
+
+    new_task = Task(
+        title=task.title,
+        description=task.description,
+        priority_level=task.priority_level,
+        due_date=task.due_date,
+        project_id=project_id,
+        assignee_id=best_assignee_id,
+    )
+
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+
+    if best_assignee_id:
+        msg = (
+            f"Smart Assign: You were automatically routed a new task "
+            f"'{task.title}' based on your bandwidth."
+        )
+        db.add(Notification(user_id=best_assignee_id, message=msg))
+        db.commit()
+
+    background_tasks.add_task(
+        manager.broadcast_to_project,
+        project_id,
+        {"event": "task_created", "task_id": new_task.id},
+    )
+
     return new_task
 
 
@@ -532,7 +897,6 @@ def get_project_tasks(
         raise HTTPException(status_code=403, detail="Not authorized.")
 
     query = db.query(Task).filter_by(project_id=project_id, is_deleted=False)
-
     if keyword:
         query = query.filter(
             or_(
@@ -551,34 +915,89 @@ def get_project_tasks(
 def update_task_status(
     task_id: int,
     task_update: schemas.TaskUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    task = db.query(Task).filter_by(id=task_id, is_deleted=False).first()
+    task = db.query(Task).filter(Task.id == task_id, Task.is_deleted.is_(False)).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     membership = (
         db.query(WorkspaceMembership)
-        .filter_by(workspace_id=task.project.workspace_id, user_id=current_user.id)
+        .filter(
+            WorkspaceMembership.workspace_id == task.project.workspace_id,
+            WorkspaceMembership.user_id == current_user.id,
+        )
         .first()
     )
+
     if not membership or membership.role not in ["admin", "editor"]:
-        raise HTTPException(status_code=403, detail="Editor access required.")
+        raise HTTPException(
+            status_code=403, detail="Not authorized. Editor access required."
+        )
 
     task.status = task_update.status
     db.commit()
     db.refresh(task)
+
+    # TRIGGER REAL-TIME BROADCAST
+    background_tasks.add_task(
+        manager.broadcast_to_project,
+        task.project_id,
+        {"event": "task_updated", "task_id": task.id, "new_status": task.status},
+    )
+
     return task
 
 
+@app.delete("/tasks/{task_id}")
+def delete_task(
+    task_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = db.query(Task).filter(Task.id == task_id, Task.is_deleted.is_(False)).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    membership = (
+        db.query(WorkspaceMembership)
+        .filter(
+            WorkspaceMembership.workspace_id == task.project.workspace_id,
+            WorkspaceMembership.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not membership or membership.role not in ["admin", "editor"]:
+        raise HTTPException(
+            status_code=403, detail="Not authorized. Editor access required."
+        )
+
+    task.is_deleted = True
+    task.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+
+    # TRIGGER REAL-TIME BROADCAST
+    background_tasks.add_task(
+        manager.broadcast_to_project,
+        task.project_id,
+        {"event": "task_deleted", "task_id": task_id},
+    )
+
+    return {"status": "success", "message": "Task moved to trash"}
+
+
 # ==========================================
-# COMMENTS & NOTIFICATIONS ROUTES
+# COMMENTS & NOTIFICATIONS
 # ==========================================
 @app.post("/tasks/{task_id}/comments", response_model=schemas.CommentResponse)
 def create_comment(
     task_id: int,
     comment: schemas.CommentCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -598,7 +1017,6 @@ def create_comment(
         content=comment.content, task_id=task_id, author_id=current_user.id
     )
 
-    # Notify Assignee of the new comment (if the commenter isn't the assignee themselves)
     if task.assignee_id and task.assignee_id != current_user.id:
         notif = Notification(
             user_id=task.assignee_id,
@@ -609,6 +1027,14 @@ def create_comment(
     db.add(new_comment)
     db.commit()
     db.refresh(new_comment)
+
+    # TRIGGER REAL-TIME BROADCAST
+    background_tasks.add_task(
+        manager.broadcast_to_project,
+        task.project_id,
+        {"event": "comment_added", "task_id": task_id, "comment_id": new_comment.id},
+    )
+
     return new_comment
 
 

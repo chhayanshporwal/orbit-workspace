@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator, EmailStr
-from typing import Optional, List, Literal, Dict
+from typing import Optional, List, Literal
 from datetime import datetime
 import re
 
@@ -115,10 +115,16 @@ class TaskResponse(TaskBase):
 # ==========================================
 # 6. ANALYTICS SCHEMAS
 # ==========================================
+class BottleneckReport(BaseModel):
+    user_email: str
+    overdue_count: int
+
+
 class AnalyticsResponse(BaseModel):
     total_tasks: int
-    status_counts: Dict[str, int]
+    status_counts: dict[str, int]
     overdue_tasks: int
+    bottlenecks: List[BottleneckReport] = []
 
 
 # ==========================================
