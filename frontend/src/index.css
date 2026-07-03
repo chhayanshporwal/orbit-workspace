@@ -1,0 +1,164 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --color-brand-magenta: #c026d3; /* fuchsia-600 */
+}
+
+/* Custom scrollbars for Kanban columns and tables */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Slide-over custom animations */
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Sparkle animation for Smart Assign */
+@keyframes sparkle {
+  0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+  50% { transform: scale(1.2) rotate(15deg); opacity: 0.8; }
+}
+.animate-sparkle {
+  animation: sparkle 1.5s infinite ease-in-out;
+}
+
+/* Dark Mode Premium Theme Overrides */
+html.dark, html.dark body {
+  background-color: #0b0f19 !important;
+  color: #f1f5f9 !important;
+}
+html.dark main {
+  background-color: #0b0f19 !important;
+}
+html.dark header {
+  background-color: #111827 !important;
+  border-color: #1f2937 !important;
+}
+html.dark header h2, html.dark header h3, html.dark header select, html.dark header input {
+  color: #f1f5f9 !important;
+}
+html.dark header input {
+  background-color: #1f2937 !important;
+  border-color: #374151 !important;
+}
+html.dark aside {
+  background-color: #111827 !important;
+  border-color: #1f2937 !important;
+}
+html.dark aside a {
+  color: #9ca3af !important;
+}
+html.dark aside a.active {
+  background-color: #1f2937 !important;
+  color: #ffffff !important;
+}
+html.dark aside button, html.dark aside div {
+  color: #f1f5f9 !important;
+}
+html.dark .bg-white {
+  background-color: #111827 !important;
+}
+html.dark .border-gray-100 {
+  border-color: #1f2937 !important;
+}
+html.dark .border-gray-200 {
+  border-color: #1f2937 !important;
+}
+html.dark .text-gray-900 {
+  color: #f1f5f9 !important;
+}
+html.dark .text-gray-800 {
+  color: #e2e8f0 !important;
+}
+html.dark .text-gray-700 {
+  color: #cbd5e1 !important;
+}
+html.dark .text-gray-600 {
+  color: #94a3b8 !important;
+}
+html.dark .text-gray-500 {
+  color: #94a3b8 !important;
+}
+html.dark .bg-gray-50 {
+  background-color: #1f2937 !important;
+}
+html.dark .bg-gray-50\/40 {
+  background-color: #111827 !important;
+}
+html.dark .bg-gray-50\/50 {
+  background-color: #111827 !important;
+}
+html.dark .bg-slate-50 {
+  background-color: #1f2937 !important;
+}
+html.dark .bg-slate-50\/40 {
+  background-color: #111827 !important;
+}
+html.dark .bg-slate-50\/50 {
+  background-color: #111827 !important;
+}
+html.dark .divide-gray-100 > * + * {
+  border-color: #1f2937 !important;
+}
+html.dark .bg-fuchsia-50\/20 {
+  background-color: rgba(244, 63, 94, 0.05) !important;
+}
+html.dark table th {
+  background-color: #1f2937 !important;
+  color: #9ca3af !important;
+  border-color: #1f2937 !important;
+}
+html.dark table td {
+  border-color: #1f2937 !important;
+}
+html.dark select {
+  background-color: #1f2937 !important;
+  color: #f1f5f9 !important;
+  border-color: #374151 !important;
+}
+html.dark input {
+  background-color: #1f2937 !important;
+  color: #f1f5f9 !important;
+  border-color: #374151 !important;
+}
+html.dark textarea {
+  background-color: #1f2937 !important;
+  color: #f1f5f9 !important;
+  border-color: #374151 !important;
+}
+html.dark .shadow-xs {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.5) !important;
+}
+html.dark .hover\:bg-gray-50\/50:hover {
+  background-color: #1f2937 !important;
+}
+html.dark .bg-fuchsia-50\/30 {
+  background-color: rgba(217, 70, 239, 0.05) !important;
+}
+html.dark .border-fuchsia-100\/50 {
+  border-color: rgba(217, 70, 239, 0.2) !important;
+}
+
