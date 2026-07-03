@@ -2,7 +2,7 @@ import os
 import sys
 
 sys.path.append(".")
-from database import Base, User, Workspace, Project, Task
+from core.database import Base, User, Workspace, Project, Task
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
