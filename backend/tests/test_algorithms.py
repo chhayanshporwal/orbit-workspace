@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from algorithms import calculate_urgency_score, workload_balancer
+from services.algorithms import calculate_urgency_score, workload_balancer
 
 
 # ==========================================
