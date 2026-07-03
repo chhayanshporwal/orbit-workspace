@@ -2,21 +2,26 @@ import os
 import httpx
 import logging
 
+from dotenv import load_dotenv
+
 # Configure highly visible and debuggable logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 )
 logger = logging.getLogger("orbit.email_service")
 
-RESEND_API_KEY = os.getenv("RESEND_API_KEY", "your_dummy_key")
+# Load dotenv to find .env file in WORKDIR
+load_dotenv()
 
 
 async def send_notification_email(to_email: str, subject: str, body: str):
     """
     Dispatches an email via Resend API with comprehensive error handling.
     """
+    resend_key = os.getenv("RESEND_API_KEY", "your_dummy_key")
+
     # 1. The Local Development Mock
-    if not RESEND_API_KEY or RESEND_API_KEY == "your_dummy_key":
+    if not resend_key or resend_key == "your_dummy_key":
         logger.info(
             f"🛑 [MOCK EMAIL] To: {to_email} | Subject: {subject} | Body: {body}"
         )
@@ -24,7 +29,7 @@ async def send_notification_email(to_email: str, subject: str, body: str):
 
     # 2. The Production Payload
     headers = {
-        "Authorization": f"Bearer {RESEND_API_KEY}",
+        "Authorization": f"Bearer {resend_key}",
         "Content-Type": "application/json",
     }
     payload = {

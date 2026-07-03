@@ -1,12 +1,20 @@
 from datetime import datetime, timezone
 
 
-def calculate_urgency_score(priority_level: str, due_date: datetime) -> float:
+def calculate_urgency_score(priority_level: str | int, due_date: datetime) -> float:
     """
     Algorithm 1: Smart Urgency Scoring
     Calculates a dynamic urgency score (0-100) based on priority and time remaining.
     Does not rely on external libraries.
     """
+    if isinstance(priority_level, int):
+        if priority_level >= 4:
+            priority_level = "High"
+        elif priority_level == 3:
+            priority_level = "Medium"
+        else:
+            priority_level = "Low"
+
     # Base scores set the foundation
     base_scores = {"High": 70.0, "Medium": 40.0, "Low": 10.0}
     base = base_scores.get(priority_level, 10.0)
