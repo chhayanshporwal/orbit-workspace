@@ -1,4 +1,7 @@
 from tests.conftest import client
+from datetime import datetime, timedelta, timezone
+from core.database import SessionLocal, User, Task, Project, Notification, Workspace
+from main import check_approaching_deadlines
 
 
 def test_create_and_update_task(auth_a):
@@ -322,3 +325,58 @@ def test_task_delete_and_retrieve(auth_a):
     # Verify soft delete
     res_get_deleted = client.get(f"/tasks/{task_id}", headers=auth_a)
     assert res_get_deleted.status_code == 404
+
+
+def test_check_approaching_deadlines():
+    db = SessionLocal()
+    # Need a user, workspace, project, task
+    u = User(email="taskguy@orbit.com", name="Guy", hashed_password="pw")
+    db.add(u)
+    db.commit()
+    db.refresh(u)
+
+    w = Workspace(name="Deadline WS")
+    db.add(w)
+    db.commit()
+    db.refresh(w)
+
+    p = Project(name="Deadline Proj", workspace_id=w.id)
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+
+    # Task due in 12 hours
+    t = Task(
+        title="Urgent Task",
+        project_id=p.id,
+        assignee_id=u.id,
+        assignor_id=u.id,
+        due_date=datetime.now(timezone.utc) + timedelta(hours=12),
+    )
+    db.add(t)
+    db.commit()
+
+    check_approaching_deadlines()
+
+    notif = db.query(Notification).filter_by(user_id=u.id).first()
+    assert notif is not None
+    assert "less than 24 hours" in notif.message
+
+    # Run again, shouldn't duplicate
+    check_approaching_deadlines()
+    notifs = db.query(Notification).filter_by(user_id=u.id).all()
+    assert len(notifs) == 1
+
+    # Cleanup
+    for obj in [t, p, w, notif, u]:
+        db.delete(obj)
+    db.commit()
+    db.close()
+
+
+def test_get_all_user_tasks(auth_a):
+    response = client.get("/users/me/all-tasks", headers=auth_a)
+    assert response.status_code == 200
+    data = response.json()
+    assert "tasks" in data
+    assert "projects" in data

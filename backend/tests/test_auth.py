@@ -1,6 +1,11 @@
 import uuid
 import json
-from tests.conftest import client, redis_client
+from tests.conftest import client
+from core.database import SessionLocal, User
+from core.security import get_password_hash
+from core.redis_client import redis_client
+from datetime import datetime, timedelta, timezone
+from main import hard_delete_expired_accounts
 
 
 def test_health_check():
@@ -183,3 +188,76 @@ def test_remember_device(auth_a, user_a):
     )
     assert res.status_code == 200
     assert "access_token" in res.json()
+
+
+def test_hard_delete_expired_accounts():
+    db = SessionLocal()
+    # Create an expired user
+    expired_user = User(
+        email="expired@orbit.com",
+        name="Expired User",
+        hashed_password=get_password_hash("password"),
+        is_verified=True,
+        deletion_scheduled_at=datetime.now(timezone.utc) - timedelta(days=35),
+    )
+    db.add(expired_user)
+
+    # Create a non-expired user
+    safe_user = User(
+        email="safe@orbit.com",
+        name="Safe User",
+        hashed_password=get_password_hash("password"),
+        is_verified=True,
+        deletion_scheduled_at=datetime.now(timezone.utc) - timedelta(days=5),
+    )
+    db.add(safe_user)
+    db.commit()
+
+    hard_delete_expired_accounts()
+
+    # Assert
+    assert db.query(User).filter_by(email="expired@orbit.com").first() is None
+    assert db.query(User).filter_by(email="safe@orbit.com").first() is not None
+
+    # Cleanup
+    db.delete(safe_user)
+    db.commit()
+    db.close()
+
+
+def test_user_sessions(auth_a):
+    # Fetch sessions
+    res = client.get("/users/me/sessions", headers=auth_a)
+    assert res.status_code == 200
+    sessions = res.json()
+    assert len(sessions) >= 1
+
+    # Try revoking the current session
+    session_id = sessions[0]["id"]
+    res_revoke = client.post(f"/users/me/sessions/{session_id}/revoke", headers=auth_a)
+    assert res_revoke.status_code == 200
+
+
+def test_schedule_and_revoke_deletion(auth_b):
+    # Request OTP
+    res_otp = client.post("/deletion-otp", headers=auth_b)
+    assert res_otp.status_code == 200
+
+    # We can't easily get the OTP from the database in this test without DB session,
+    # so we'll just test the failure branch for schedule_deletion.
+    res_sched = client.post(
+        "/schedule-deletion", json={"otp": "000000", "reason": "Test"}, headers=auth_b
+    )
+    assert res_sched.status_code == 400
+    assert "Invalid deletion OTP" in res_sched.json()["detail"]
+
+    # Revoke deletion should fail because it's not scheduled
+    res_rev = client.post("/revoke-deletion", headers=auth_b)
+    assert res_rev.status_code == 400
+    assert "not scheduled for deletion" in res_rev.json()["detail"]
+
+
+def test_access_protected_route_without_token():
+    response = client.get("/users/me")
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Not authenticated"

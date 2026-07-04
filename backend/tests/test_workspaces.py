@@ -63,3 +63,50 @@ def test_workspace_invitations_and_requests(auth_a, auth_b, user_b):
     res_my_ws = client.get(f"/users/{user_id}/workspaces", headers=auth_a)
     ws_ids = [w["id"] for w in res_my_ws.json()]
     assert ws_id not in ws_ids
+
+
+def test_get_nonexistent_workspace(auth_a):
+    response = client.delete("/workspaces/9999", headers=auth_a)
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Workspace not found"
+
+
+def test_create_workspace_invalid_data(auth_a):
+    payload = {"description": "This should fail because name is missing"}
+    response = client.post("/workspaces/", json=payload, headers=auth_a)
+    assert response.status_code == 422
+
+
+def test_remove_member_not_admin(auth_a, auth_b, user_b):
+    # User A creates workspace
+    ws_res = client.post("/workspaces/", json={"name": "Test Cover"}, headers=auth_a)
+    ws_id = ws_res.json()["id"]
+    # User A invites User B as editor
+    client.post(
+        f"/workspaces/{ws_id}/members",
+        json={"email": user_b["email"], "role": "editor"},
+        headers=auth_a,
+    )
+    # User B accepts
+    inv_res = client.get("/workspace-invitations", headers=auth_b)
+    mem_id = next(m["id"] for m in inv_res.json() if m["workspace_id"] == ws_id)
+    client.post(f"/workspace-invitations/{mem_id}/accept", headers=auth_b)
+
+    # User B tries to remove User A (Not admin)
+    me_res = client.get("/users/me", headers=auth_a)
+    user_a_id = me_res.json()["id"]
+    del_res = client.delete(f"/workspaces/{ws_id}/members/{user_a_id}", headers=auth_b)
+    assert del_res.status_code == 403
+
+
+def test_remove_last_admin(auth_a):
+    # User A creates workspace
+    ws_res = client.post("/workspaces/", json={"name": "Test Cover 2"}, headers=auth_a)
+    ws_id = ws_res.json()["id"]
+
+    me_res = client.get("/users/me", headers=auth_a)
+    user_a_id = me_res.json()["id"]
+
+    # User A tries to remove themselves (they are the last admin)
+    del_res = client.delete(f"/workspaces/{ws_id}/members/{user_a_id}", headers=auth_a)
+    assert del_res.status_code == 400
