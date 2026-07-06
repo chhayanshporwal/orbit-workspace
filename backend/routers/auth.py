@@ -26,6 +26,121 @@ from models import schemas
 
 router = APIRouter()
 
+
+def get_real_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "127.0.0.1"
+
+def _create_session_and_login(user: User, request: Request, background_tasks: BackgroundTasks, db: Session, device_id: str = None, device_name: str = None):
+    jti = str(uuid.uuid4())
+    dev_id = device_id or "unknown_device"
+    dev_name = device_name or request.headers.get("user-agent", "Unknown Device")
+    ip_addr = get_real_ip(request)
+
+    is_new_device = (
+        db.query(UserSession).filter_by(user_id=user.id, device_id=dev_id).first()
+        is None
+    )
+
+    import httpx
+
+    location = None
+    if ip_addr and ip_addr not in ("127.0.0.1", "::1", "localhost"):
+        try:
+            res = httpx.get(f"http://ip-api.com/json/{ip_addr}", timeout=2.0)
+            if res.status_code == 200:
+                data = res.json()
+                if data.get("status") == "success":
+                    location = (
+                        f"{data.get('city', '')}, {data.get('country', '')}".strip(", ")
+                    )
+        except Exception:
+            pass
+
+    db_session = UserSession(
+        user_id=user.id,
+        device_id=dev_id,
+        device_name=dev_name,
+        ip_address=ip_addr,
+        location=location,
+        token_jti=jti,
+        is_active=True,
+    )
+    db.add(db_session)
+    db.commit()
+
+    if is_new_device:
+        now_str = datetime.now().strftime("%B %d, %Y at %I:%M %p")
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        msg = (
+            "We noticed a login from a device you don't usually use.\n\n"
+            "Was this you?\n\n"
+            f"When: {now_str}\n"
+            f"Device: {dev_name}\n"
+            f"Where: {location or 'Unknown'} (IP: {ip_addr})\n\n"
+            "If this was you, you can ignore this message. There's no need to take any action.\n\n"
+            "If this wasn't you, your account may have been compromised. Please secure your account immediately by resetting your password here:\n"
+            f"{frontend_url}/forgot-password"
+        )
+        background_tasks.add_task(
+            send_notification_email,
+            to_email=user.email,
+            subject="New Device Login - Orbit Workspace",
+            body=msg,
+        )
+
+    return {
+        "access_token": create_access_token(
+            {"sub": user.email, "jti": jti, "device_id": dev_id}
+        ),
+        "token_type": "bearer",
+        "deletion_scheduled_at": (
+            user.deletion_scheduled_at.isoformat()
+            if user.deletion_scheduled_at
+            else None
+        ),
+    }
+
+class ResendVerificationRequest(schemas.BaseModel):
+    email: str
+
+@router.post("/resend-verification")
+@limiter.limit("3/minute")
+def resend_verification(
+    request: Request,
+    payload: ResendVerificationRequest,
+    background_tasks: BackgroundTasks,
+):
+    redis_key = f"pending_registration:{payload.email}"
+    pending_bytes = redis_client.get(redis_key)
+    if not pending_bytes:
+        raise HTTPException(
+            status_code=400, detail="No pending registration found or session expired"
+        )
+
+    pending_data = json.loads(pending_bytes)
+    resend_count = pending_data.get("resend_count", 0)
+    if resend_count >= 5:
+        raise HTTPException(status_code=429, detail="Maximum resend attempts reached. Please register again later.")
+
+    new_code = f"{random.randint(100000, 999999)}"
+    pending_data["code"] = new_code
+    pending_data["resend_count"] = resend_count + 1
+
+    redis_client.set(redis_key, json.dumps(pending_data), ex=900)
+
+    msg = f"Your new Orbit verification code is: {new_code}"
+    background_tasks.add_task(
+        send_notification_email,
+        to_email=payload.email,
+        subject="Verify your Orbit Account",
+        body=msg,
+    )
+    return {"status": "success", "message": "Verification code resent."}
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -95,19 +210,26 @@ def register_user(
     }
 
 
-@router.post("/verify-email", response_model=schemas.UserResponse)
-def verify_email(payload: schemas.UserVerify, db: Session = Depends(get_db)):
+@router.post("/verify-email")
+def verify_email(
+    request: Request,
+    payload: schemas.UserVerify,
+    background_tasks: BackgroundTasks,
+    device_id: Optional[str] = Form(None),
+    device_name: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
     # Check if user is already registered in DB
     existing_user = db.query(User).filter(User.email == payload.email).first()
     if existing_user:
         if existing_user.is_verified:
-            return existing_user
+            return _create_session_and_login(existing_user, request, background_tasks, db, device_id, device_name)
         if existing_user.verification_code == payload.code:
             existing_user.is_verified = True
             existing_user.verification_code = None
             db.commit()
             db.refresh(existing_user)
-            return existing_user
+            return _create_session_and_login(existing_user, request, background_tasks, db, device_id, device_name)
         raise HTTPException(status_code=400, detail="Invalid verification code")
 
     # Fetch pending from Redis
@@ -136,7 +258,7 @@ def verify_email(payload: schemas.UserVerify, db: Session = Depends(get_db)):
 
     # Remove Redis key
     redis_client.delete(redis_key)
-    return new_user
+    return _create_session_and_login(new_user, request, background_tasks, db, device_id, device_name)
 
 
 @router.post("/forgot-password")
@@ -285,75 +407,7 @@ def login(
     if not user.is_verified:
         raise HTTPException(status_code=400, detail="Email not verified")
 
-    # Create active session in DB
-    jti = str(uuid.uuid4())
-    dev_id = device_id or "unknown_device"
-    dev_name = device_name or request.headers.get("user-agent", "Unknown Device")
-    ip_addr = request.client.host if request.client else "127.0.0.1"
-
-    is_new_device = (
-        db.query(UserSession).filter_by(user_id=user.id, device_id=dev_id).first()
-        is None
-    )
-
-    import httpx
-
-    location = None
-    if ip_addr and ip_addr not in ("127.0.0.1", "::1", "localhost"):
-        try:
-            res = httpx.get(f"http://ip-api.com/json/{ip_addr}", timeout=2.0)
-            if res.status_code == 200:
-                data = res.json()
-                if data.get("status") == "success":
-                    location = (
-                        f"{data.get('city', '')}, {data.get('country', '')}".strip(", ")
-                    )
-        except Exception:
-            pass
-
-    db_session = UserSession(
-        user_id=user.id,
-        device_id=dev_id,
-        device_name=dev_name,
-        ip_address=ip_addr,
-        location=location,
-        token_jti=jti,
-        is_active=True,
-    )
-    db.add(db_session)
-    db.commit()
-
-    if is_new_device:
-        now_str = datetime.now().strftime("%B %d, %Y at %I:%M %p")
-        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-        msg = (
-            "We noticed a login from a device you don't usually use.\n\n"
-            "Was this you?\n\n"
-            f"When: {now_str}\n"
-            f"Device: {dev_name}\n"
-            f"Where: {location or 'Unknown'} (IP: {ip_addr})\n\n"
-            "If this was you, you can ignore this message. There's no need to take any action.\n\n"
-            "If this wasn't you, your account may have been compromised. Please secure your account immediately by resetting your password here:\n"
-            f"{frontend_url}/forgot-password"
-        )
-        background_tasks.add_task(
-            send_notification_email,
-            to_email=user.email,
-            subject="New Device Login - Orbit Workspace",
-            body=msg,
-        )
-
-    return {
-        "access_token": create_access_token(
-            {"sub": user.email, "jti": jti, "device_id": dev_id}
-        ),
-        "token_type": "bearer",
-        "deletion_scheduled_at": (
-            user.deletion_scheduled_at.isoformat()
-            if user.deletion_scheduled_at
-            else None
-        ),
-    }
+    return _create_session_and_login(user, request, background_tasks, db, device_id, device_name)
 
 
 @router.post("/logout")
@@ -538,7 +592,7 @@ def remember_device(
 
 @router.post("/auth/google")
 def google_login(
-    payload: schemas.GoogleLoginRequest, request: Request, db: Session = Depends(get_db)
+    payload: schemas.GoogleLoginRequest, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
 ):
     code = payload.code
     redirect_uri = payload.redirect_uri
@@ -608,24 +662,7 @@ def google_login(
 
     db.commit()
 
-    jti = str(uuid.uuid4())
-    device_id = "google_oauth_device"
-    device_name = request.headers.get("user-agent", "Unknown Device")
-    ip_address = request.client.host if request.client else "127.0.0.1"
-
-    db_session = UserSession(
-        user_id=user.id,
-        device_id=device_id,
-        device_name=device_name,
-        ip_address=ip_address,
-        token_jti=jti,
-        is_active=True,
-    )
-    db.add(db_session)
-    db.commit()
-
-    token = create_access_token({"sub": user.email, "jti": jti, "device_id": device_id})
-    return {"access_token": token, "token_type": "bearer"}
+    return _create_session_and_login(user, request, background_tasks, db, "google_oauth_device", request.headers.get("user-agent", "Unknown Device"))
 
 
 def reassign_tasks_for_deleted_user(user_id: int, db: Session):
@@ -705,7 +742,9 @@ def reassign_tasks_for_deleted_user(user_id: int, db: Session):
 
 
 @router.post("/deletion-otp")
+@limiter.limit("5/minute")
 def request_deletion_otp(
+    request: Request,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
