@@ -93,7 +93,7 @@ export default function Home() {
       <div className="pb-6 border-b border-gray-100 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 flex items-center gap-2">
-            <Compass className="text-fuchsia-600" size={26} />
+            <img src="/favicon.svg" alt="Orbit" className="w-7 h-7" />
             Hello, {user?.name || 'User'}
           </h1>
           <p className="text-xs text-gray-500 mt-1">

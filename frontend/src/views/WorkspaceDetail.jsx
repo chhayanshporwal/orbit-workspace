@@ -386,10 +386,10 @@ export default function WorkspaceDetail() {
         </div>
 
         {/* Tab Controls */}
-        <div className="flex gap-4 mt-6">
+        <div className="flex gap-4 mt-6 overflow-x-auto whitespace-nowrap hide-scrollbar pb-1">
           <button
             onClick={() => handleTabChange('projects')}
-            className={`flex items-center gap-1.5 px-4 py-2 border-b-2 text-xs font-extrabold transition-all ${
+            className={`flex shrink-0 items-center gap-1.5 px-4 py-2 border-b-2 text-xs font-extrabold transition-all ${
               activeTab === 'projects'
                 ? 'border-fuchsia-600 text-fuchsia-600'
                 : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -399,7 +399,7 @@ export default function WorkspaceDetail() {
           </button>
           <button
             onClick={() => handleTabChange('members')}
-            className={`flex items-center gap-1.5 px-4 py-2 border-b-2 text-xs font-extrabold transition-all ${
+            className={`flex shrink-0 items-center gap-1.5 px-4 py-2 border-b-2 text-xs font-extrabold transition-all ${
               activeTab === 'members'
                 ? 'border-fuchsia-600 text-fuchsia-600'
                 : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -409,7 +409,7 @@ export default function WorkspaceDetail() {
           </button>
           <button
             onClick={() => handleTabChange('analytics')}
-            className={`flex items-center gap-1.5 px-4 py-2 border-b-2 text-xs font-extrabold transition-all ${
+            className={`flex shrink-0 items-center gap-1.5 px-4 py-2 border-b-2 text-xs font-extrabold transition-all ${
               activeTab === 'analytics'
                 ? 'border-fuchsia-600 text-fuchsia-600'
                 : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -419,7 +419,7 @@ export default function WorkspaceDetail() {
           </button>
           <button
             onClick={() => handleTabChange('audit_log')}
-            className={`flex items-center gap-1.5 px-4 py-2 border-b-2 text-xs font-extrabold transition-all ${
+            className={`flex shrink-0 items-center gap-1.5 px-4 py-2 border-b-2 text-xs font-extrabold transition-all ${
               activeTab === 'audit_log'
                 ? 'border-fuchsia-600 text-fuchsia-600'
                 : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -430,7 +430,7 @@ export default function WorkspaceDetail() {
           {role.isAdmin && (
             <button
               onClick={() => handleTabChange('settings')}
-              className={`flex items-center gap-1.5 px-4 py-2 border-b-2 text-xs font-extrabold transition-all ${
+              className={`flex shrink-0 items-center gap-1.5 px-4 py-2 border-b-2 text-xs font-extrabold transition-all ${
                 activeTab === 'settings'
                   ? 'border-fuchsia-600 text-fuchsia-600'
                   : 'border-transparent text-gray-400 hover:text-gray-600'

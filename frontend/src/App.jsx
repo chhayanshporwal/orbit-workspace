@@ -32,7 +32,7 @@ function ProtectedRoute({ children }) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center font-sans">
         <div className="w-12 h-12 rounded-2xl bg-fuchsia-600 flex items-center justify-center text-white shadow-lg animate-bounce">
-          <Compass size={24} className="animate-spin" />
+          <img src="/favicon.svg" alt="Orbit" className="w-6 h-6 animate-spin" />
         </div>
         <p className="mt-4 text-xs font-bold text-gray-400 uppercase tracking-wider animate-pulse">
           Orbiting Workspace...

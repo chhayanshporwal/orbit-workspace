@@ -348,7 +348,7 @@ export default function AppShell() {
           className="h-16 px-6 border-b border-gray-200 flex items-center gap-2 hover:bg-gray-100/30 transition-colors"
         >
           <div className="w-8 h-8 rounded-xl bg-fuchsia-600 flex items-center justify-center text-white shadow-sm shadow-fuchsia-500">
-            <Compass size={18} className="animate-spin-slow" />
+            <img src="/favicon.svg" alt="Orbit" className="w-5 h-5 animate-spin-slow" />
           </div>
           <span className={"text-lg font-extrabold tracking-tight bg-gradient-to-r from-fuchsia-600 to-indigo-600 bg-clip-text text-transparent transition-all duration-300 hidden xl:block"}>
             Orbit Workspace
@@ -418,7 +418,7 @@ export default function AppShell() {
               }`
             }
           >
-            <Compass size={16} />
+            <img src="/favicon.svg" alt="Orbit" className="w-5 h-5" />
             <span className={"whitespace-nowrap transition-all duration-300 hidden xl:block ml-2"}>Home</span>
           </NavLink>
 
