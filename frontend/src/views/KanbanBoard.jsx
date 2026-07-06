@@ -1137,8 +1137,8 @@ function TaskCard({ task, members, onDragStart, onDragEnd, onClick, overdue, isA
       }`}
     >
       {draggedByOther && (
-        <div className="absolute -top-3 -right-2 bg-fuchsia-500 text-white text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-sm animate-pulse flex items-center gap-1 z-10">
-          <Activity size={10} />
+        <div className="absolute top-0 right-0 rounded-bl-xl rounded-tr-xl bg-fuchsia-500 text-white text-xs font-bold px-3 py-1.5 shadow-sm animate-pulse flex items-center gap-1.5 z-10">
+          <Activity size={12} />
           {draggedByOther.userName} is moving...
         </div>
       )}
