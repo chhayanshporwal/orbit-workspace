@@ -11,6 +11,7 @@ import Modal from '../components/Modal';
 import RememberMeDialog from '../components/RememberMeDialog';
 import {
   Home,
+  X,
   CheckSquare,
   Inbox,
   Bell,
@@ -102,6 +103,8 @@ export default function AppShell() {
   const [showWorkspaceSelect, setShowWorkspaceSelect] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
+  const [showMobileProfileMenu, setShowMobileProfileMenu] = useState(false);
 
   const [darkMode, setDarkMode] = useState(() => {
     return localStorage.getItem('orbit_dark_mode') === 'true';
@@ -533,7 +536,7 @@ export default function AppShell() {
         <header className="h-16 border-b border-gray-200 flex items-center justify-between px-8 bg-white shrink-0 z-30">
           
           {/* Breadcrumbs — Orbit › Workspace › Project */}
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-600">
+          <div className={`flex items-center gap-2 text-sm font-semibold text-gray-600 ${showMobileSearch ? 'hidden md:flex' : ''}`}>
             {/* Orbit root */}
             <span
               className="hover:text-fuchsia-600 transition-colors cursor-pointer"
@@ -590,15 +593,20 @@ export default function AppShell() {
           </div>
 
           {/* Search Bar */}
-          <div className="hidden md:block w-1/3 max-w-md relative">
+          <div className={`w-full max-w-md relative ${showMobileSearch ? 'block flex-1 mr-4' : 'hidden md:block w-1/3'}`}>
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input
               type="text"
               placeholder="Search tasks, projects, members..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-sm rounded-full border border-gray-200 bg-gray-50/50 hover:bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/20 focus:border-fuchsia-500 transition-all font-medium"
+              className="w-full pl-10 pr-10 py-2 text-sm rounded-full border border-gray-200 bg-gray-50/50 hover:bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/20 focus:border-fuchsia-500 transition-all font-medium"
             />
+            {showMobileSearch && (
+              <button onClick={() => setShowMobileSearch(false)} className="md:hidden absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 p-1 hover:text-gray-600">
+                <X size={14} />
+              </button>
+            )}
 
             {searchQuery.trim() && (
               <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 max-h-[360px] overflow-y-auto p-4 text-left space-y-4">
@@ -684,8 +692,8 @@ export default function AppShell() {
           </div>
 
           {/* Right Section: Header Actions */}
-          <div className="flex md:hidden items-center">
-            <button className="p-2 text-gray-500 hover:text-fuchsia-600 transition-colors">
+          <div className={`flex md:hidden items-center ${showMobileSearch ? 'hidden' : ''}`}>
+            <button onClick={() => setShowMobileSearch(true)} className="p-2 text-gray-500 hover:text-fuchsia-600 transition-colors">
               <Search size={18} />
             </button>
           </div>
@@ -906,10 +914,35 @@ export default function AppShell() {
           <span className="text-[9px] font-bold mt-1">Inbox</span>
         </NavLink>
         
-        <button onClick={() => setShowProfileModal(true)} className="flex flex-col items-center justify-center w-14 h-full text-gray-400 hover:text-gray-600">
-          <Avatar initials={user?.initials || '??'} name={user?.name || ''} size="sm" />
-          <span className="text-[9px] font-bold mt-1">Profile</span>
-        </button>
+        <div className="relative h-full">
+          <button onClick={() => setShowMobileProfileMenu(!showMobileProfileMenu)} className={`flex flex-col items-center justify-center w-14 h-full ${showMobileProfileMenu ? 'text-fuchsia-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            <Avatar initials={user?.initials || '??'} name={user?.name || ''} size="sm" />
+            <span className="text-[9px] font-bold mt-1">Profile</span>
+          </button>
+          
+          {showMobileProfileMenu && (
+            <div className="absolute bottom-[110%] right-0 mb-2 w-48 bg-white border border-gray-200 rounded-2xl shadow-xl py-2 z-50 animate-fadeIn">
+               <div className="px-4 py-2 border-b border-gray-100">
+                 <div className="text-xs font-extrabold text-gray-900 truncate">{user?.name}</div>
+                 <div className="text-[10px] text-gray-500 font-semibold truncate">{user?.email}</div>
+               </div>
+               
+               <button onClick={() => { setShowMobileProfileMenu(false); setShowProfileModal(true); }} className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                 <UserCheck size={14} /> Profile Settings
+               </button>
+               
+               <button onClick={() => { setShowMobileProfileMenu(false); navigate('/settings'); }} className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                 <Settings size={14} /> System Settings
+               </button>
+               
+               <div className="border-t border-gray-100 my-1"></div>
+               
+               <button onClick={handleLogout} className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2">
+                 <LogOut size={14} /> Log Out
+               </button>
+            </div>
+          )}
+        </div>
       </nav>
 
       </div>
