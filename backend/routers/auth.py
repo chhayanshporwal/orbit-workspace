@@ -5,8 +5,6 @@ import os
 import uuid
 import logging
 from typing import List, Optional
-
-logger = logging.getLogger(__name__)
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks, Form
 from fastapi.security import OAuth2PasswordRequestForm
@@ -27,6 +25,8 @@ from services.email_service import send_notification_email
 from models import schemas
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 
 class RememberDeviceRequest(schemas.BaseModel):
@@ -550,7 +550,9 @@ def google_login(
 
     if GOOGLE_CLIENT_ID == "mock-google-client-id":
         if os.getenv("ENVIRONMENT", "development") != "development":
-            raise HTTPException(status_code=403, detail="OAuth mock bypass disabled in production")
+            raise HTTPException(
+                status_code=403, detail="OAuth mock bypass disabled in production"
+            )
         email = "google-user@example.com"
         name = "Google User"
     else:

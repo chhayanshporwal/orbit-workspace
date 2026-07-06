@@ -17,6 +17,7 @@ import Inbox from './views/Inbox';
 import HomeView from './views/Home';
 import Settings from './views/Settings';
 import NotFound from './views/NotFound';
+import LandingPage from './pages/LandingPage';
 
 // Error Boundary & Icons
 import ErrorBoundary from './components/ErrorBoundary';
@@ -55,6 +56,9 @@ export default function App() {
         <WorkspaceProvider>
           <BrowserRouter>
             <Routes>
+              {/* Public Landing Page */}
+              <Route path="/" element={<LandingPage />} />
+
               {/* Public Auth Routes */}
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
@@ -62,15 +66,14 @@ export default function App() {
 
               {/* Authenticated Application Shell */}
               <Route
-                path="/"
-                element = {
+                element={
                   <ProtectedRoute>
                     <AppShell />
                   </ProtectedRoute>
                 }
               >
-                {/* Redirect root to home */}
-                <Route index element={<Navigate to="/home" replace />} />
+                {/* Redirect /app to /home just in case */}
+                <Route path="app" element={<Navigate to="/home" replace />} />
                 
                 {/* Home Dashboard */}
                 <Route path="home" element={<HomeView />} />

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import PillButton from '../components/PillButton';
-import { Compass, Eye, EyeOff } from 'lucide-react';
+import { Compass, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { api } from '../utils/api';
 
 export default function Register() {
@@ -72,7 +72,11 @@ export default function Register() {
     };
 
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
+      <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans relative">
+        <Link to="/" className="absolute top-6 left-6 sm:top-8 sm:left-8 flex items-center text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Home
+        </Link>
         <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
           <div className="mx-auto w-12 h-12 rounded-2xl bg-fuchsia-600 flex items-center justify-center text-white shadow-md shadow-fuchsia-500/30">
             <Compass size={24} />
@@ -131,7 +135,11 @@ export default function Register() {
 
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans relative">
+      <Link to="/" className="absolute top-6 left-6 sm:top-8 sm:left-8 flex items-center text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors">
+        <ArrowLeft className="w-4 h-4 mr-2" />
+        Back to Home
+      </Link>
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         <div className="mx-auto w-12 h-12 rounded-2xl bg-fuchsia-600 flex items-center justify-center text-white shadow-md shadow-fuchsia-500/30">
           <Compass size={24} />
