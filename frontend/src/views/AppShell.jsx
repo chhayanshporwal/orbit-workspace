@@ -365,7 +365,7 @@ export default function AppShell() {
               <Layers size={14} className="text-fuchsia-600" />
               <span className="hidden xl:block">{activeWorkspace ? activeWorkspace.name : 'Select Workspace'}</span><span className="xl:hidden">{activeWorkspace ? activeWorkspace.name.substring(0, 1) : 'S'}</span>
             </span>
-            <ChevronDown size={14} className={`text-gray-400 transition-transform ${showWorkspaceSelect ? 'rotate-180' : ''} ${isSidebarHovered ? 'opacity-100 block' : 'opacity-0 hidden'}`} />
+            <ChevronDown size={14} className={`text-gray-400 transition-transform hidden xl:block ${showWorkspaceSelect ? 'rotate-180' : ''}`} />
           </button>
 
           {showWorkspaceSelect && (
