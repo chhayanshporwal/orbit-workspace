@@ -357,6 +357,7 @@ The project includes a **GitHub Actions** workflow (`.github/workflows/ci.yml`) 
 | **Phase 2** | Background Processing | Offload email dispatch and analytics aggregations to Celery workers backed by Redis |
 | **Phase 3** | State Management | Migrate from React Context to Redux Toolkit for optimized re-render performance on large Kanban boards |
 | **Phase 4** | Frontend Testing Suite | Implement Playwright E2E tests covering authentication flows, Kanban interactions, and cross-browser UI stability |
+| **Phase 5** | Mobile & Media Expansion | Refine responsive UI components, support secure file attachments on tasks, and develop a native mobile application sharing the same backend |
 
 ---
 
