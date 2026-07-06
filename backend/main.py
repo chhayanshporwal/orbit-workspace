@@ -159,7 +159,8 @@ app.add_middleware(SlowAPIMiddleware)
 
 origins = [
     os.environ.get("FRONTEND_URL", "http://localhost:3000"),
-    # Add any other allowed origins here if necessary
+    "https://orbitworkspace.xyz",
+    "https://www.orbitworkspace.xyz",
 ]
 
 app.add_middleware(
