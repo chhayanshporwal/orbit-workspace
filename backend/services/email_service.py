@@ -33,7 +33,7 @@ async def send_notification_email(to_email: str, subject: str, body: str):
         "Content-Type": "application/json",
     }
     payload = {
-        "from": "Orbit Notifications <onboarding@resend.dev>",
+        "from": "Orbit Notifications <noreply@orbitworkspace.xyz>",
         "to": to_email,
         "subject": subject,
         "html": f"<div style='font-family: sans-serif;'><h2>Orbit Alert</h2><p>{body}</p></div>",
