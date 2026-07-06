@@ -743,7 +743,7 @@ export default function KanbanBoard() {
               <div
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, 'todo')}
-                className="bg-slate-50 border border-gray-200/60 rounded-2xl p-4 flex flex-col w-80 shrink-0 select-none min-h-[500px]"
+                className="bg-slate-50 border border-gray-200/60 rounded-2xl p-4 flex flex-col flex-1 min-w-[320px] max-w-[500px] shrink-0 select-none min-h-[500px]"
               >
                 <div className="flex items-center justify-between pb-3 border-b border-gray-200/50 mb-3 px-1">
                   <div className="flex items-center gap-2">
@@ -782,7 +782,7 @@ export default function KanbanBoard() {
               <div
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, 'inprogress')}
-                className="bg-slate-50 border border-gray-200/60 rounded-2xl p-4 flex flex-col w-80 shrink-0 select-none min-h-[500px]"
+                className="bg-slate-50 border border-gray-200/60 rounded-2xl p-4 flex flex-col flex-1 min-w-[320px] max-w-[500px] shrink-0 select-none min-h-[500px]"
               >
                 <div className="flex items-center justify-between pb-3 border-b border-gray-200/50 mb-3 px-1">
                   <div className="flex items-center gap-2">
@@ -821,7 +821,7 @@ export default function KanbanBoard() {
               <div
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, 'done')}
-                className="bg-slate-50 border border-gray-200/60 rounded-2xl p-4 flex flex-col w-80 shrink-0 select-none min-h-[500px]"
+                className="bg-slate-50 border border-gray-200/60 rounded-2xl p-4 flex flex-col flex-1 min-w-[320px] max-w-[500px] shrink-0 select-none min-h-[500px]"
               >
                 <div className="flex items-center justify-between pb-3 border-b border-gray-200/50 mb-3 px-1">
                   <div className="flex items-center gap-2">

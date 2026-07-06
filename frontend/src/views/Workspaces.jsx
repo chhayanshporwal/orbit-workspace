@@ -82,7 +82,7 @@ export default function Workspaces() {
       
       {/* Header */}
 
-      <div className="flex items-center justify-between pb-8 border-b border-gray-100">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-8 border-b border-gray-100">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 flex items-center gap-2">
             <Layers className="text-fuchsia-600" size={28} />
@@ -95,7 +95,7 @@ export default function Workspaces() {
         <PillButton
           variant="primary"
           onClick={() => setIsOpen(true)}
-          className="flex items-center gap-1.5 shadow-md shadow-fuchsia-500/20"
+          className="flex items-center justify-center gap-1.5 shadow-md shadow-fuchsia-500/20 w-full sm:w-auto"
         >
           <Plus size={16} /> Create Workspace
         </PillButton>
