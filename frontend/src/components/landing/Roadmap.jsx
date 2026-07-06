@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ShieldAlert, Server, Workflow, CheckCircle2 } from 'lucide-react';
+import { ShieldAlert, Server, Workflow, CheckCircle2, Smartphone } from 'lucide-react';
 
 export default function Roadmap() {
   const roadmapItems = [
@@ -23,6 +23,11 @@ export default function Roadmap() {
       icon: <CheckCircle2 className="w-6 h-6 text-fuchsia-500 dark:text-fuchsia-400" />,
       title: "Phase 4: Frontend Testing Suite",
       description: "Implementing robust E2E testing using Playwright to automatically verify critical user journeys, authentication flows, and UI stability across multiple browsers."
+    },
+    {
+      icon: <Smartphone className="w-6 h-6 text-sky-500 dark:text-sky-400" />,
+      title: "Phase 5: Mobile & Media Expansion",
+      description: "Refining the responsive UI for perfect cross-device harmony, supporting file attachments on tasks, and developing a native mobile application."
     }
   ];
 

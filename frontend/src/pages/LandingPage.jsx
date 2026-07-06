@@ -34,7 +34,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           
           <div className="flex items-center gap-2 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-            <Rocket className="text-indigo-600 dark:text-indigo-500" /> Orbit
+            <img src="/favicon.svg" alt="Orbit" className="w-6 h-6" /> Orbit
           </div>
           
           <div className="flex items-center gap-4">

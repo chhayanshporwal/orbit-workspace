@@ -11,7 +11,7 @@ export default function NotFound() {
       <div className="text-center max-w-md flex flex-col items-center">
         {/* Floating Compass Icon */}
         <div className="w-20 h-20 rounded-3xl bg-fuchsia-50 text-fuchsia-600 flex items-center justify-center shadow-md animate-pulse mb-8 border border-fuchsia-100/50">
-          <Compass size={40} className="animate-spin-slow" />
+          <img src="/favicon.svg" alt="Orbit" className="w-10 h-10 animate-spin-slow" />
         </div>
 
         {/* 404 Heading */}

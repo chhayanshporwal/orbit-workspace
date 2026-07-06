@@ -223,7 +223,7 @@ export default function Login() {
       </Link>
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         <div className="mx-auto w-12 h-12 rounded-2xl bg-fuchsia-600 flex items-center justify-center text-white shadow-md shadow-fuchsia-500/30">
-          <Compass size={24} />
+          <img src="/favicon.svg" alt="Orbit" className="w-6 h-6" />
         </div>
         <h2 className="mt-6 text-3xl font-extrabold tracking-tight text-gray-900">
           Welcome to Orbit
