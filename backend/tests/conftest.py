@@ -30,16 +30,20 @@ def user_a():
 
 @pytest.fixture(scope="module")
 def auth_a(user_a):
-    client.post("/users/", json=user_a)
+    res = client.post("/users/", json=user_a)
+    assert res.status_code == 200, res.text
+
     pending_bytes = redis_client.get(f"pending_registration:{user_a['email']}")
-    if pending_bytes:
-        pending = json.loads(pending_bytes)
-        client.post(
-            "/verify-email", json={"email": user_a["email"], "code": pending["code"]}
-        )
-    token = client.post(
-        "/login", data={"username": user_a["email"], "password": user_a["password"]}
-    ).json()["access_token"]
+    assert pending_bytes is not None, "Failed to find pending_registration in Redis"
+
+    pending = json.loads(pending_bytes)
+    res = client.post(
+        "/verify-email", json={"email": user_a["email"], "code": pending["code"]}
+    )
+    assert res.status_code == 200, res.text
+
+    token = res.json().get("access_token")
+    assert token is not None, "No access_token in verify-email response"
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -53,14 +57,18 @@ def user_b():
 
 @pytest.fixture(scope="module")
 def auth_b(user_b):
-    client.post("/users/", json=user_b)
+    res = client.post("/users/", json=user_b)
+    assert res.status_code == 200, res.text
+
     pending_bytes = redis_client.get(f"pending_registration:{user_b['email']}")
-    if pending_bytes:
-        pending = json.loads(pending_bytes)
-        client.post(
-            "/verify-email", json={"email": user_b["email"], "code": pending["code"]}
-        )
-    token = client.post(
-        "/login", data={"username": user_b["email"], "password": user_b["password"]}
-    ).json()["access_token"]
+    assert pending_bytes is not None, "Failed to find pending_registration in Redis"
+
+    pending = json.loads(pending_bytes)
+    res = client.post(
+        "/verify-email", json={"email": user_b["email"], "code": pending["code"]}
+    )
+    assert res.status_code == 200, res.text
+
+    token = res.json().get("access_token")
+    assert token is not None, "No access_token in verify-email response"
     return {"Authorization": f"Bearer {token}"}

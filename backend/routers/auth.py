@@ -228,8 +228,6 @@ def verify_email(
     request: Request,
     payload: schemas.UserVerify,
     background_tasks: BackgroundTasks,
-    device_id: Optional[str] = Form(None),
-    device_name: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     # Check if user is already registered in DB
@@ -237,7 +235,12 @@ def verify_email(
     if existing_user:
         if existing_user.is_verified:
             return _create_session_and_login(
-                existing_user, request, background_tasks, db, device_id, device_name
+                existing_user,
+                request,
+                background_tasks,
+                db,
+                payload.device_id,
+                payload.device_name,
             )
         if existing_user.verification_code == payload.code:
             existing_user.is_verified = True
@@ -245,7 +248,12 @@ def verify_email(
             db.commit()
             db.refresh(existing_user)
             return _create_session_and_login(
-                existing_user, request, background_tasks, db, device_id, device_name
+                existing_user,
+                request,
+                background_tasks,
+                db,
+                payload.device_id,
+                payload.device_name,
             )
         raise HTTPException(status_code=400, detail="Invalid verification code")
 
@@ -276,7 +284,7 @@ def verify_email(
     # Remove Redis key
     redis_client.delete(redis_key)
     return _create_session_and_login(
-        new_user, request, background_tasks, db, device_id, device_name
+        new_user, request, background_tasks, db, payload.device_id, payload.device_name
     )
 
 
