@@ -45,13 +45,15 @@ def test_get_user_workspaces(auth_a, user_a):
     client.post("/users/", json=temp_user)
     pending_bytes = redis_client.get(f"pending_registration:{temp_user['email']}")
     pending = json.loads(pending_bytes)
-    temp_id = client.post(
+    verify_res = client.post(
         "/verify-email", json={"email": temp_user["email"], "code": pending["code"]}
-    ).json()["id"]
-    token = client.post(
-        "/login",
-        data={"username": temp_user["email"], "password": temp_user["password"]},
-    ).json()["access_token"]
+    ).json()
+    token = verify_res["access_token"]
+
+    # Get user id from /users/me
+    me_res = client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    temp_id = me_res.json()["id"]
+
     res = client.get(
         f"/users/{temp_id}/workspaces", headers={"Authorization": f"Bearer {token}"}
     )
@@ -127,17 +129,17 @@ def test_token_revocation_logout():
     client.post("/users/", json=temp_user)
 
     pending_bytes = redis_client.get(f"pending_registration:{temp_user['email']}")
-    if pending_bytes:
-        pending = json.loads(pending_bytes)
-        client.post(
-            "/verify-email", json={"email": temp_user["email"], "code": pending["code"]}
-        )
+    assert pending_bytes is not None, "Failed to get pending registration from Redis"
 
+    pending = json.loads(pending_bytes)
     res = client.post(
-        "/login",
-        data={"username": temp_user["email"], "password": temp_user["password"]},
+        "/verify-email", json={"email": temp_user["email"], "code": pending["code"]}
     )
-    auth_headers = {"Authorization": f"Bearer {res.json()['access_token']}"}
+    assert res.status_code == 200, res.text
+    token = res.json().get("access_token")
+    assert token is not None, "Failed to get access token from verify-email"
+
+    auth_headers = {"Authorization": f"Bearer {token}"}
 
     logout_res = client.post("/logout", headers=auth_headers)
     assert logout_res.status_code == 200

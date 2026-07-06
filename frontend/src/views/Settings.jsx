@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
-import { Shield, Key, FileArchive, Activity, ShieldCheck, LogOut } from 'lucide-react';
+import { Shield, Key, FileArchive, Activity, ShieldCheck, LogOut, Eye, EyeOff } from 'lucide-react';
 import { showToast } from '../components/Toast';
 
 const parseDeviceName = (userAgent) => {
@@ -48,6 +48,9 @@ export default function Settings() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
 
   // Login Logs Tab State
   const [sessions, setSessions] = useState([]);
@@ -61,6 +64,14 @@ export default function Settings() {
   const [deletionOtp, setDeletionOtp] = useState('');
   const [isOtpSent, setIsOtpSent] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deletionResendCooldown, setDeletionResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (deletionResendCooldown > 0) {
+      const timer = setTimeout(() => setDeletionResendCooldown(c => c - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [deletionResendCooldown]);
 
   // Fetch functions
   const fetchSessions = useCallback(async () => {
@@ -149,10 +160,12 @@ export default function Settings() {
   };
 
   const handleRequestDeletionOtp = async () => {
+    if (deletionResendCooldown > 0) return;
     try {
       await api.post('/deletion-otp');
       setIsOtpSent(true);
       showToast('success', 'Deletion OTP sent to your email.');
+      setDeletionResendCooldown(30);
     } catch (err) {
       showToast('error', err.response?.data?.detail || err.message || 'Failed to send OTP');
     }
@@ -243,39 +256,57 @@ export default function Settings() {
               <form onSubmit={handlePasswordUpdate} className="space-y-4">
                 <div>
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">New Password</label>
-                  <input
-                    type="password"
-                    placeholder="Enter new password"
-                    value={newPassword}
-                    maxLength={128}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full px-4 py-2.5 text-xs rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-500/20 focus:border-fuchsia-500 transition-all font-medium"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      placeholder="Enter new password"
+                      value={newPassword}
+                      maxLength={128}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full px-4 py-2.5 text-xs rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-500/20 focus:border-fuchsia-500 transition-all font-medium pr-10"
+                      required
+                    />
+                    <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-fuchsia-600 transition-colors">
+                      {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Confirm New Password</label>
-                  <input
-                    type="password"
-                    placeholder="Repeat new password"
-                    value={confirmNewPassword}
-                    maxLength={128}
-                    onChange={(e) => setConfirmNewPassword(e.target.value)}
-                    className="w-full px-4 py-2.5 text-xs rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-500/20 focus:border-fuchsia-500 transition-all font-medium"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showConfirmNewPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      placeholder="Repeat new password"
+                      value={confirmNewPassword}
+                      maxLength={128}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      className="w-full px-4 py-2.5 text-xs rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-500/20 focus:border-fuchsia-500 transition-all font-medium pr-10"
+                      required
+                    />
+                    <button type="button" onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-fuchsia-600 transition-colors">
+                      {showConfirmNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
                 <div className="pt-2">
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Current Password</label>
-                  <input
-                    type="password"
-                    placeholder="Verify current password"
-                    value={currentPassword}
-                    maxLength={128}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="w-full px-4 py-2.5 text-xs rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-500/20 focus:border-fuchsia-500 transition-all font-medium"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showCurrentPassword ? 'text' : 'password'}
+                      autoComplete="current-password"
+                      placeholder="Verify current password"
+                      value={currentPassword}
+                      maxLength={128}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      className="w-full px-4 py-2.5 text-xs rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-500/20 focus:border-fuchsia-500 transition-all font-medium pr-10"
+                      required
+                    />
+                    <button type="button" onClick={() => setShowCurrentPassword(!showCurrentPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-fuchsia-600 transition-colors">
+                      {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                   <p className="text-[9px] text-gray-400 mt-1">Required to authorize changes to your security settings.</p>
                 </div>
                 <button
@@ -568,6 +599,16 @@ export default function Settings() {
                         maxLength={6}
                         disabled={isDeleting}
                       />
+                      <div className="text-center">
+                        <button
+                          type="button"
+                          onClick={handleRequestDeletionOtp}
+                          disabled={deletionResendCooldown > 0}
+                          className="text-[10px] font-bold text-gray-500 hover:text-gray-700 disabled:text-gray-400 transition-colors"
+                        >
+                          {deletionResendCooldown > 0 ? `Resend OTP in ${deletionResendCooldown}s` : 'Resend OTP'}
+                        </button>
+                      </div>
                       <button
                         type="submit"
                         disabled={isDeleting || deletionOtp.length !== 6}

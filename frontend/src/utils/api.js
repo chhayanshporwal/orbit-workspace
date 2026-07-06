@@ -1,7 +1,7 @@
 // In production (Docker/Nginx), requests are proxied via /api/ -> backend:8000/
 // In dev (vite), requests go directly to http://localhost:8000
 const IS_DEV = import.meta.env.DEV;
-const API_BASE = IS_DEV ? 'http://localhost:8000' : '/api';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 async function request(endpoint, options = {}) {
   const token = localStorage.getItem('orbit_access_token') || sessionStorage.getItem('orbit_access_token');
@@ -97,12 +97,7 @@ export const api = {
 
 // Helper to get the WebSocket base URL
 export function getWsBase() {
-  if (IS_DEV) {
-    return 'ws://localhost:8000';
-  }
-  // In production, use the same host the page is served from
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.host}`;
+  return import.meta.env.VITE_WS_URL || (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host;
 }
 
 export default api;

@@ -37,10 +37,15 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_task_edit_histories_id"), "task_edit_histories", ["id"], unique=False
     )
-    op.add_column("tasks", sa.Column("assignor_id", sa.Integer(), nullable=True))
-    op.create_foreign_key(
-        None, "tasks", "users", ["assignor_id"], ["id"], ondelete="SET NULL"
-    )
+    with op.batch_alter_table("tasks") as batch_op:
+        batch_op.add_column(sa.Column("assignor_id", sa.Integer(), nullable=True))
+        batch_op.create_foreign_key(
+            "fk_tasks_assignor_id_users",
+            "users",
+            ["assignor_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
     op.add_column(
         "users",
         sa.Column(
@@ -63,8 +68,9 @@ def downgrade() -> None:
     op.drop_column("users", "reset_otp")
     op.drop_column("users", "verification_code")
     op.drop_column("users", "is_verified")
-    op.drop_constraint(None, "tasks", type_="foreignkey")
-    op.drop_column("tasks", "assignor_id")
+    with op.batch_alter_table("tasks") as batch_op:
+        batch_op.drop_constraint("fk_tasks_assignor_id_users", type_="foreignkey")
+        batch_op.drop_column("assignor_id")
     op.drop_index(op.f("ix_task_edit_histories_id"), table_name="task_edit_histories")
     op.drop_table("task_edit_histories")
     # ### end Alembic commands ###

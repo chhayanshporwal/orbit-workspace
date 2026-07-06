@@ -157,17 +157,15 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, custom_rate_limit_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# Build CORS origins conditionally based on environment
-_cors_origins = [
+origins = [
+    os.environ.get("FRONTEND_URL", "http://localhost:3000"),
     "https://orbitworkspace.xyz",
     "https://www.orbitworkspace.xyz",
 ]
-if os.getenv("ENVIRONMENT", "development") == "development":
-    _cors_origins.extend(["http://localhost:5173", "http://localhost:3000"])
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

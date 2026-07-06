@@ -80,18 +80,18 @@ def create_workspace(
     "/users/{user_id}/workspaces", response_model=List[schemas.WorkspaceResponse]
 )
 def get_user_workspaces(
-    user_id: int,
+    user_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Enforce IDOR protection: user can only fetch their own workspaces
-    if current_user.id != user_id:
-        raise HTTPException(status_code=403, detail="Not authorized.")
-
+    # Ignore user_id parameter from URL to prevent cache issues, use current_user.id
     return (
         db.query(Workspace)
         .join(WorkspaceMembership)
-        .filter(WorkspaceMembership.user_id == user_id, Workspace.is_deleted.is_(False))
+        .filter(
+            WorkspaceMembership.user_id == current_user.id,
+            Workspace.is_deleted.is_(False),
+        )
         .filter(WorkspaceMembership.is_pending.is_(False))
         .all()
     )

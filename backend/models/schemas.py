@@ -241,6 +241,8 @@ class TaskResponse(TaskBase):
 class UserVerify(BaseModel):
     email: EmailStr
     code: str = Field(..., min_length=6, max_length=6)
+    device_id: Optional[str] = None
+    device_name: Optional[str] = None
 
 
 class ForgotPasswordRequest(BaseModel):
