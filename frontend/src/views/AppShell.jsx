@@ -11,6 +11,7 @@ import Modal from '../components/Modal';
 import RememberMeDialog from '../components/RememberMeDialog';
 import {
   Home,
+  X,
   CheckSquare,
   Inbox,
   Bell,
@@ -97,11 +98,13 @@ export default function AppShell() {
   }, [projectSlug, workspaceSlug, location.pathname, workspaces, allProjects, setActiveWorkspaceId, setActiveProjectId]);
 
   const [showNotifications, setShowNotifications] = useState(false);
-  const [isSidebarHovered, setIsSidebarHovered] = useState(false);
+  
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showWorkspaceSelect, setShowWorkspaceSelect] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
+  const [showMobileProfileMenu, setShowMobileProfileMenu] = useState(false);
 
   const [darkMode, setDarkMode] = useState(() => {
     return localStorage.getItem('orbit_dark_mode') === 'true';
@@ -333,12 +336,8 @@ export default function AppShell() {
     <div className="flex h-screen bg-white font-sans overflow-hidden text-gray-900">
       {/* Sidebar (Left, Fixed) */}
       {/* Desktop Sidebar (Hover-to-expand overlay) */}
-      <div className="hidden md:block w-20 h-full shrink-0 relative z-50">
-        <aside 
-          onMouseEnter={() => setIsSidebarHovered(true)}
-          onMouseLeave={() => setIsSidebarHovered(false)}
-          className={`absolute top-0 left-0 bg-gray-50 border-r border-gray-200 flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out ${isSidebarHovered ? 'w-64 shadow-2xl' : 'w-20'}`}
-        >
+      <div className="hidden md:flex h-full shrink-0 relative z-50">
+        <aside className="bg-gray-50 border-r border-gray-200 flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out w-20 xl:w-64">
         {/* Sidebar Header / Logo */}
         <Link
           to="/home"
@@ -351,7 +350,7 @@ export default function AppShell() {
           <div className="w-8 h-8 rounded-xl bg-fuchsia-600 flex items-center justify-center text-white shadow-sm shadow-fuchsia-500">
             <Compass size={18} className="animate-spin-slow" />
           </div>
-          <span className={`text-lg font-extrabold tracking-tight bg-gradient-to-r from-fuchsia-600 to-indigo-600 bg-clip-text text-transparent transition-all duration-300 ${isSidebarHovered ? 'opacity-100 w-auto' : 'opacity-0 w-0 overflow-hidden'}`}>
+          <span className={"text-lg font-extrabold tracking-tight bg-gradient-to-r from-fuchsia-600 to-indigo-600 bg-clip-text text-transparent transition-all duration-300 hidden xl:block"}>
             Orbit Workspace
           </span>
         </Link>
@@ -364,7 +363,7 @@ export default function AppShell() {
           >
             <span className="truncate flex items-center gap-1.5">
               <Layers size={14} className="text-fuchsia-600" />
-              {isSidebarHovered ? (activeWorkspace ? activeWorkspace.name : 'Select Workspace') : (activeWorkspace ? activeWorkspace.name.substring(0, 1) : 'S')}
+              <span className="hidden xl:block">{activeWorkspace ? activeWorkspace.name : 'Select Workspace'}</span><span className="xl:hidden">{activeWorkspace ? activeWorkspace.name.substring(0, 1) : 'S'}</span>
             </span>
             <ChevronDown size={14} className={`text-gray-400 transition-transform ${showWorkspaceSelect ? 'rotate-180' : ''} ${isSidebarHovered ? 'opacity-100 block' : 'opacity-0 hidden'}`} />
           </button>
@@ -420,7 +419,7 @@ export default function AppShell() {
             }
           >
             <Compass size={16} />
-            <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarHovered ? 'opacity-100 w-auto ml-1' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>Home</span>
+            <span className={"whitespace-nowrap transition-all duration-300 hidden xl:block ml-2"}>Home</span>
           </NavLink>
 
           <NavLink
@@ -434,7 +433,7 @@ export default function AppShell() {
             }
           >
             <Layers size={16} />
-            <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarHovered ? 'opacity-100 w-auto ml-1' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>Workspaces</span>
+            <span className={"whitespace-nowrap transition-all duration-300 hidden xl:block ml-2"}>Workspaces</span>
           </NavLink>
 
           <NavLink
@@ -448,7 +447,7 @@ export default function AppShell() {
             }
           >
             <CheckSquare size={16} />
-            <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarHovered ? 'opacity-100 w-auto ml-1' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>My Tasks</span>
+            <span className={"whitespace-nowrap transition-all duration-300 hidden xl:block ml-2"}>My Tasks</span>
           </NavLink>
 
           <NavLink
@@ -462,14 +461,14 @@ export default function AppShell() {
             }
           >
             <Inbox size={16} />
-            <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarHovered ? 'opacity-100 w-auto ml-1' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>Inbox</span>
+            <span className={"whitespace-nowrap transition-all duration-300 hidden xl:block ml-2"}>Inbox</span>
           </NavLink>
 
           {/* Projects Divider & List */}
           {activeWorkspace && (
             <div className="pt-6">
               <div className="px-4 pb-2 flex items-center justify-between">
-                <span className={`text-[10px] uppercase tracking-wider font-extrabold text-gray-400 transition-all duration-300 ${isSidebarHovered ? 'opacity-100 block' : 'opacity-0 hidden'}`}>
+                <span className={"text-[10px] uppercase tracking-wider font-extrabold text-gray-400 transition-all duration-300 hidden xl:block"}>
                   Projects
                 </span>
                 <Link
@@ -477,7 +476,7 @@ export default function AppShell() {
                   className="text-gray-400 hover:text-fuchsia-600 transition-colors"
                   title="Workspace Dashboard"
                 >
-                  <Settings size={12} className={isSidebarHovered ? 'opacity-100' : 'opacity-0'} />
+                  <Settings size={12} className="hidden xl:block" />
                 </Link>
               </div>
 
@@ -496,7 +495,7 @@ export default function AppShell() {
                     }
                   >
                     <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                    <span className={`truncate whitespace-nowrap transition-all duration-300 ${isSidebarHovered ? "opacity-100 w-auto ml-1" : "opacity-0 w-0 overflow-hidden ml-0"}`}>{p.name}</span>
+                    <span className={"truncate whitespace-nowrap transition-all duration-300 hidden xl:block ml-2"}>{p.name}</span>
                   </NavLink>
                 ))}
 
@@ -514,14 +513,14 @@ export default function AppShell() {
         <div className="p-4 border-t border-gray-200 bg-gray-50/50 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Avatar initials={user?.initials || '??'} name={user?.name || ''} size="sm" />
-            <div className={`leading-tight transition-all duration-300 ${isSidebarHovered ? 'opacity-100 w-auto ml-2' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>
+            <div className={"leading-tight transition-all duration-300 hidden xl:block ml-2"}>
               <div className="text-xs font-extrabold text-gray-900 truncate max-w-[120px]">{user?.name}</div>
               <div className="text-[10px] text-gray-500 font-medium capitalize">{activeWorkspace?.members.find(m => m.id === user?.id)?.role || user?.globalRole}</div>
             </div>
           </div>
           <button
             onClick={handleLogout}
-            className={`p-1.5 rounded-full hover:bg-red-50 text-gray-400 hover:text-red-600 transition-all ${isSidebarHovered ? 'opacity-100 block' : 'opacity-0 hidden'}`}
+            className={"p-1.5 rounded-full hover:bg-red-50 text-gray-400 hover:text-red-600 transition-all hidden xl:block"}
             title="Log Out"
           >
             <LogOut size={16} />
@@ -537,7 +536,7 @@ export default function AppShell() {
         <header className="h-16 border-b border-gray-200 flex items-center justify-between px-8 bg-white shrink-0 z-30">
           
           {/* Breadcrumbs — Orbit › Workspace › Project */}
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-600">
+          <div className={`flex items-center gap-2 text-sm font-semibold text-gray-600 ${showMobileSearch ? 'hidden md:flex' : ''}`}>
             {/* Orbit root */}
             <span
               className="hover:text-fuchsia-600 transition-colors cursor-pointer"
@@ -594,15 +593,20 @@ export default function AppShell() {
           </div>
 
           {/* Search Bar */}
-          <div className="w-1/3 max-w-md relative">
+          <div className={`w-full max-w-md relative ${showMobileSearch ? 'block flex-1 mr-4' : 'hidden md:block w-1/3'}`}>
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input
               type="text"
               placeholder="Search tasks, projects, members..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-sm rounded-full border border-gray-200 bg-gray-50/50 hover:bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/20 focus:border-fuchsia-500 transition-all font-medium"
+              className="w-full pl-10 pr-10 py-2 text-sm rounded-full border border-gray-200 bg-gray-50/50 hover:bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/20 focus:border-fuchsia-500 transition-all font-medium"
             />
+            {showMobileSearch && (
+              <button onClick={() => setShowMobileSearch(false)} className="md:hidden absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 p-1 hover:text-gray-600">
+                <X size={14} />
+              </button>
+            )}
 
             {searchQuery.trim() && (
               <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 max-h-[360px] overflow-y-auto p-4 text-left space-y-4">
@@ -688,7 +692,12 @@ export default function AppShell() {
           </div>
 
           {/* Right Section: Header Actions */}
-          <div className="flex items-center gap-4">
+          <div className={`flex md:hidden items-center ${showMobileSearch ? 'hidden' : ''}`}>
+            <button onClick={() => setShowMobileSearch(true)} className="p-2 text-gray-500 hover:text-fuchsia-600 transition-colors">
+              <Search size={18} />
+            </button>
+          </div>
+          <div className="hidden md:flex items-center gap-4">
             
             <button
               onClick={() => setDarkMode(!darkMode)}
@@ -905,10 +914,35 @@ export default function AppShell() {
           <span className="text-[9px] font-bold mt-1">Inbox</span>
         </NavLink>
         
-        <button onClick={() => setShowProfileModal(true)} className="flex flex-col items-center justify-center w-14 h-full text-gray-400 hover:text-gray-600">
-          <Avatar initials={user?.initials || '??'} name={user?.name || ''} size="sm" />
-          <span className="text-[9px] font-bold mt-1">Profile</span>
-        </button>
+        <div className="relative h-full">
+          <button onClick={() => setShowMobileProfileMenu(!showMobileProfileMenu)} className={`flex flex-col items-center justify-center w-14 h-full ${showMobileProfileMenu ? 'text-fuchsia-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            <Avatar initials={user?.initials || '??'} name={user?.name || ''} size="sm" />
+            <span className="text-[9px] font-bold mt-1">Profile</span>
+          </button>
+          
+          {showMobileProfileMenu && (
+            <div className="absolute bottom-[110%] right-0 mb-2 w-48 bg-white border border-gray-200 rounded-2xl shadow-xl py-2 z-50 animate-fadeIn">
+               <div className="px-4 py-2 border-b border-gray-100">
+                 <div className="text-xs font-extrabold text-gray-900 truncate">{user?.name}</div>
+                 <div className="text-[10px] text-gray-500 font-semibold truncate">{user?.email}</div>
+               </div>
+               
+               <button onClick={() => { setShowMobileProfileMenu(false); setShowProfileModal(true); }} className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                 <UserCheck size={14} /> Profile Settings
+               </button>
+               
+               <button onClick={() => { setShowMobileProfileMenu(false); navigate('/settings'); }} className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                 <Settings size={14} /> System Settings
+               </button>
+               
+               <div className="border-t border-gray-100 my-1"></div>
+               
+               <button onClick={handleLogout} className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2">
+                 <LogOut size={14} /> Log Out
+               </button>
+            </div>
+          )}
+        </div>
       </nav>
 
       </div>
