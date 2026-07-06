@@ -99,8 +99,8 @@ export default function Register() {
           Back to Home
         </Link>
         <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-          <div className="mx-auto w-12 h-12 rounded-2xl bg-fuchsia-600 flex items-center justify-center text-white shadow-md shadow-fuchsia-500/30">
-            <img src="/favicon.svg" alt="Orbit" className="w-6 h-6" />
+          <div className="mx-auto w-12 h-12 flex items-center justify-center">
+            <img src="/favicon.svg" alt="Orbit" className="w-12 h-12" />
           </div>
           <h2 className="mt-6 text-3xl font-extrabold tracking-tight text-gray-900">
             Account Verification
@@ -172,9 +172,9 @@ export default function Register() {
         Back to Home
       </Link>
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="mx-auto w-12 h-12 rounded-2xl bg-fuchsia-600 flex items-center justify-center text-white shadow-md shadow-fuchsia-500/30">
-          <img src="/favicon.svg" alt="Orbit" className="w-6 h-6" />
-        </div>
+        <div className="mx-auto w-12 h-12 flex items-center justify-center">
+            <img src="/favicon.svg" alt="Orbit" className="w-12 h-12" />
+          </div>
         <h2 className="mt-6 text-3xl font-extrabold tracking-tight text-gray-900">
           Create account
         </h2>

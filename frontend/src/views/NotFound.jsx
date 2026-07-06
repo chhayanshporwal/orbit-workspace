@@ -10,8 +10,8 @@ export default function NotFound() {
     <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 font-sans">
       <div className="text-center max-w-md flex flex-col items-center">
         {/* Floating Compass Icon */}
-        <div className="w-20 h-20 rounded-3xl bg-fuchsia-50 text-fuchsia-600 flex items-center justify-center shadow-md animate-pulse mb-8 border border-fuchsia-100/50">
-          <img src="/favicon.svg" alt="Orbit" className="w-10 h-10 animate-spin-slow" />
+        <div className="w-20 h-20 flex items-center justify-center animate-pulse mb-8">
+          <img src="/favicon.svg" alt="Orbit" className="w-20 h-20 animate-spin-slow" />
         </div>
 
         {/* 404 Heading */}
