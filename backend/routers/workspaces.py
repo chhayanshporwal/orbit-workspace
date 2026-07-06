@@ -88,7 +88,10 @@ def get_user_workspaces(
     return (
         db.query(Workspace)
         .join(WorkspaceMembership)
-        .filter(WorkspaceMembership.user_id == current_user.id, Workspace.is_deleted.is_(False))
+        .filter(
+            WorkspaceMembership.user_id == current_user.id,
+            Workspace.is_deleted.is_(False),
+        )
         .filter(WorkspaceMembership.is_pending.is_(False))
         .all()
     )

@@ -19,6 +19,27 @@ export default function Register() {
   const [verificationCode, setVerificationCode] = useState('');
   const [verifyError, setVerifyError] = useState('');
   const [verifySuccess, setVerifySuccess] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  React.useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(c => c - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
+
+  const handleResend = async () => {
+    if (resendCooldown > 0) return;
+    setVerifyError('');
+    setVerifySuccess('');
+    try {
+      await api.post('/resend-verification', { email });
+      setVerifySuccess('Verification code resent successfully!');
+      setResendCooldown(30);
+    } catch (err) {
+      setVerifyError(err.message || 'Failed to resend code');
+    }
+  };
   const navigate = useNavigate();
 
   const getPasswordStrength = (p) => {
@@ -113,6 +134,16 @@ export default function Register() {
               <PillButton type="submit" variant="primary" className="w-full py-2.5">
                 Verify & Activate
               </PillButton>
+              <div className="text-center mt-2">
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={resendCooldown > 0}
+                  className="text-[10px] font-bold text-fuchsia-600 hover:text-fuchsia-700 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+                >
+                  {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend verification code'}
+                </button>
+              </div>
             </form>
 
             <div className="border-t border-gray-100 pt-4 flex flex-col gap-2">

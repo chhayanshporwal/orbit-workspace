@@ -84,6 +84,8 @@ export default function Login() {
 
   // Forgot Password States
   const [showForgotModal, setShowForgotModal] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
   const [forgotStage, setForgotStage] = useState('email'); // 'email', 'otp', 'reset'
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotOtp, setForgotOtp] = useState('');
@@ -91,6 +93,27 @@ export default function Login() {
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
+  const [forgotResendCooldown, setForgotResendCooldown] = useState(0);
+
+  React.useEffect(() => {
+    if (forgotResendCooldown > 0) {
+      const timer = setTimeout(() => setForgotResendCooldown(c => c - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [forgotResendCooldown]);
+
+  const handleResendForgot = async () => {
+    if (forgotResendCooldown > 0) return;
+    setForgotError('');
+    setForgotSuccess('');
+    try {
+      await api.post('/forgot-password', { email: forgotEmail });
+      setForgotSuccess('Recovery code resent successfully!');
+      setForgotResendCooldown(30);
+    } catch (err) {
+      setForgotError(err.message || 'Failed to resend code');
+    }
+  };
 
   // Email Verification states
   const [showVerifyModal, setShowVerifyModal] = useState(false);
@@ -98,6 +121,27 @@ export default function Login() {
   const [verificationCode, setVerificationCode] = useState('');
   const [verifyError, setVerifyError] = useState('');
   const [verifySuccess, setVerifySuccess] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  React.useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(c => c - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
+
+  const handleResendVerify = async () => {
+    if (resendCooldown > 0) return;
+    setVerifyError('');
+    setVerifySuccess('');
+    try {
+      await api.post('/resend-verification', { email: verifyEmailAddress });
+      setVerifySuccess('Verification code resent successfully!');
+      setResendCooldown(30);
+    } catch (err) {
+      setVerifyError(err.message || 'Failed to resend code');
+    }
+  };
 
   // Deletion Revocation states
   const [showRevokeModal, setShowRevokeModal] = useState(false);
@@ -141,11 +185,15 @@ export default function Login() {
     setVerifyError('');
     setVerifySuccess('');
     try {
-      await api.post('/verify-email', { email: verifyEmailAddress, code: verificationCode });
+      const res = await api.post('/verify-email', { email: verifyEmailAddress, code: verificationCode });
+      localStorage.setItem('orbit_access_token', res.access_token);
+      await fetchProfile();
       setVerifySuccess('Email verified successfully! You can now log in.');
+      window.dispatchEvent(new CustomEvent('orbit-toast', { detail: { type: 'success', message: 'Email verified! Logging in...' } }));
       setTimeout(() => {
         setShowVerifyModal(false);
-      }, 2000);
+        navigate('/workspaces');
+      }, 1000);
     } catch (err) {
       setVerifyError(err.message || 'Failed to verify email.');
     }
@@ -471,6 +519,18 @@ export default function Login() {
                 />
               </div>
               {forgotError && <p className="text-[10px] font-bold text-red-500 mt-1">{forgotError}</p>}
+              {forgotSuccess && <p className="text-[10px] font-bold text-green-600 mt-1">{forgotSuccess}</p>}
+              
+              <div className="text-center mt-2">
+                <button
+                  type="button"
+                  onClick={handleResendForgot}
+                  disabled={forgotResendCooldown > 0}
+                  className="text-[10px] font-bold text-fuchsia-600 hover:text-fuchsia-700 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+                >
+                  {forgotResendCooldown > 0 ? `Resend code in ${forgotResendCooldown}s` : 'Resend recovery code'}
+                </button>
+              </div>
               <div className="flex justify-end gap-2 pt-2">
                 <PillButton variant="ghost" onClick={() => setForgotStage('email')}>
                   Back
@@ -503,6 +563,7 @@ export default function Login() {
                     new_password: newPassword
                   });
                   setForgotSuccess('Password successfully reset! You can now log in.');
+                  window.dispatchEvent(new CustomEvent('orbit-toast', { detail: { type: 'success', message: 'Password updated successfully!' } }));
                   setTimeout(() => {
                     setShowForgotModal(false);
                   }, 2000);
@@ -520,14 +581,23 @@ export default function Login() {
                 <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">
                   New Password
                 </label>
-                <input
-                  type="password"
-                  required
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-4 py-2.5 rounded-full border border-gray-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-500/20 text-xs font-semibold"
-                />
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-4 py-2.5 rounded-full border border-gray-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-500/20 text-xs font-semibold pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-fuchsia-600 transition-colors"
+                  >
+                    {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
 
                 {/* Real-time policy requirements list */}
                 <div className="mt-2.5 grid grid-cols-2 gap-2 text-[9px] font-bold">
@@ -550,14 +620,23 @@ export default function Login() {
                 <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">
                   Confirm Password
                 </label>
-                <input
-                  type="password"
-                  required
-                  value={confirmNewPassword}
-                  onChange={(e) => setConfirmNewPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-4 py-2.5 rounded-full border border-gray-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-500/20 text-xs font-semibold"
-                />
+                <div className="relative">
+                  <input
+                    type={showConfirmNewPassword ? 'text' : 'password'}
+                    required
+                    value={confirmNewPassword}
+                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-4 py-2.5 rounded-full border border-gray-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-500/20 text-xs font-semibold pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-fuchsia-600 transition-colors"
+                  >
+                    {showConfirmNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
 
               {forgotError && <p className="text-[10px] font-bold text-red-500 mt-1">{forgotError}</p>}
@@ -601,6 +680,16 @@ export default function Login() {
           {verifyError && <p className="text-[10px] font-bold text-red-500">{verifyError}</p>}
           {verifySuccess && <p className="text-[10px] font-bold text-green-600">{verifySuccess}</p>}
 
+          <div className="text-center mt-2">
+            <button
+              type="button"
+              onClick={handleResendVerify}
+              disabled={resendCooldown > 0}
+              className="text-[10px] font-bold text-fuchsia-600 hover:text-fuchsia-700 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+            >
+              {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend verification code'}
+            </button>
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <PillButton variant="ghost" onClick={() => setShowVerifyModal(false)}>
               Cancel

@@ -33,7 +33,15 @@ def get_real_ip(request: Request) -> str:
         return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "127.0.0.1"
 
-def _create_session_and_login(user: User, request: Request, background_tasks: BackgroundTasks, db: Session, device_id: str = None, device_name: str = None):
+
+def _create_session_and_login(
+    user: User,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session,
+    device_id: str = None,
+    device_name: str = None,
+):
     jti = str(uuid.uuid4())
     dev_id = device_id or "unknown_device"
     dev_name = device_name or request.headers.get("user-agent", "Unknown Device")
@@ -103,8 +111,10 @@ def _create_session_and_login(user: User, request: Request, background_tasks: Ba
         ),
     }
 
+
 class ResendVerificationRequest(schemas.BaseModel):
     email: str
+
 
 @router.post("/resend-verification")
 @limiter.limit("3/minute")
@@ -123,7 +133,10 @@ def resend_verification(
     pending_data = json.loads(pending_bytes)
     resend_count = pending_data.get("resend_count", 0)
     if resend_count >= 5:
-        raise HTTPException(status_code=429, detail="Maximum resend attempts reached. Please register again later.")
+        raise HTTPException(
+            status_code=429,
+            detail="Maximum resend attempts reached. Please register again later.",
+        )
 
     new_code = f"{random.randint(100000, 999999)}"
     pending_data["code"] = new_code
@@ -217,19 +230,23 @@ def verify_email(
     background_tasks: BackgroundTasks,
     device_id: Optional[str] = Form(None),
     device_name: Optional[str] = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     # Check if user is already registered in DB
     existing_user = db.query(User).filter(User.email == payload.email).first()
     if existing_user:
         if existing_user.is_verified:
-            return _create_session_and_login(existing_user, request, background_tasks, db, device_id, device_name)
+            return _create_session_and_login(
+                existing_user, request, background_tasks, db, device_id, device_name
+            )
         if existing_user.verification_code == payload.code:
             existing_user.is_verified = True
             existing_user.verification_code = None
             db.commit()
             db.refresh(existing_user)
-            return _create_session_and_login(existing_user, request, background_tasks, db, device_id, device_name)
+            return _create_session_and_login(
+                existing_user, request, background_tasks, db, device_id, device_name
+            )
         raise HTTPException(status_code=400, detail="Invalid verification code")
 
     # Fetch pending from Redis
@@ -258,7 +275,9 @@ def verify_email(
 
     # Remove Redis key
     redis_client.delete(redis_key)
-    return _create_session_and_login(new_user, request, background_tasks, db, device_id, device_name)
+    return _create_session_and_login(
+        new_user, request, background_tasks, db, device_id, device_name
+    )
 
 
 @router.post("/forgot-password")
@@ -407,7 +426,9 @@ def login(
     if not user.is_verified:
         raise HTTPException(status_code=400, detail="Email not verified")
 
-    return _create_session_and_login(user, request, background_tasks, db, device_id, device_name)
+    return _create_session_and_login(
+        user, request, background_tasks, db, device_id, device_name
+    )
 
 
 @router.post("/logout")
@@ -592,7 +613,10 @@ def remember_device(
 
 @router.post("/auth/google")
 def google_login(
-    payload: schemas.GoogleLoginRequest, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
+    payload: schemas.GoogleLoginRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
 ):
     code = payload.code
     redirect_uri = payload.redirect_uri
@@ -662,7 +686,14 @@ def google_login(
 
     db.commit()
 
-    return _create_session_and_login(user, request, background_tasks, db, "google_oauth_device", request.headers.get("user-agent", "Unknown Device"))
+    return _create_session_and_login(
+        user,
+        request,
+        background_tasks,
+        db,
+        "google_oauth_device",
+        request.headers.get("user-agent", "Unknown Device"),
+    )
 
 
 def reassign_tasks_for_deleted_user(user_id: int, db: Session):

@@ -40,7 +40,11 @@ def upgrade() -> None:
     with op.batch_alter_table("tasks") as batch_op:
         batch_op.add_column(sa.Column("assignor_id", sa.Integer(), nullable=True))
         batch_op.create_foreign_key(
-            "fk_tasks_assignor_id_users", "users", ["assignor_id"], ["id"], ondelete="SET NULL"
+            "fk_tasks_assignor_id_users",
+            "users",
+            ["assignor_id"],
+            ["id"],
+            ondelete="SET NULL",
         )
     op.add_column(
         "users",
