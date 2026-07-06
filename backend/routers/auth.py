@@ -3,7 +3,10 @@ import random
 import json
 import os
 import uuid
+import logging
 from typing import List, Optional
+
+logger = logging.getLogger(__name__)
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks, Form
 from fastapi.security import OAuth2PasswordRequestForm
@@ -546,6 +549,8 @@ def google_login(
     )
 
     if GOOGLE_CLIENT_ID == "mock-google-client-id":
+        if os.getenv("ENVIRONMENT", "development") != "development":
+            raise HTTPException(status_code=403, detail="OAuth mock bypass disabled in production")
         email = "google-user@example.com"
         name = "Google User"
     else:
@@ -561,7 +566,7 @@ def google_login(
         }
         res = httpx.post(token_url, data=data)
         if res.status_code != 200:
-            print("Google OAuth Error:", res.text)
+            logger.error(f"Google OAuth Error: {res.text}")
             raise HTTPException(
                 status_code=400, detail="Failed to exchange Google authorization code"
             )

@@ -27,12 +27,13 @@ target_metadata = Base.metadata
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
+database_url = os.getenv("DATABASE_URL")
+if not database_url:
+    raise RuntimeError("FATAL: DATABASE_URL environment variable is not set.")
+
 config.set_main_option(
     "sqlalchemy.url",
-    os.getenv(
-        "DATABASE_URL",
-        "postgresql+psycopg2://orbit_admin:supersecretpassword@db:5432/orbit_database",
-    ),
+    database_url,
 )
 
 
