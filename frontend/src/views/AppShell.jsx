@@ -97,6 +97,8 @@ export default function AppShell() {
   }, [projectSlug, workspaceSlug, location.pathname, workspaces, allProjects, setActiveWorkspaceId, setActiveProjectId]);
 
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showWorkspaceSelect, setShowWorkspaceSelect] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -331,7 +333,17 @@ export default function AppShell() {
   return (
     <div className="flex h-screen bg-white font-sans overflow-hidden text-gray-900">
       {/* Sidebar (Left, Fixed) */}
-      <aside className="w-64 bg-gray-50 border-r border-gray-200 flex flex-col h-full shrink-0">
+      {isMobileSidebarOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/20 md:hidden transition-opacity"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        />
+      )}
+      <aside 
+        onMouseEnter={() => setIsSidebarHovered(true)}
+        onMouseLeave={() => setIsSidebarHovered(false)}
+        className={`fixed md:relative z-50 bg-gray-50 border-r border-gray-200 flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${isSidebarHovered ? 'w-64' : 'w-20'}`}
+      >
         {/* Sidebar Header / Logo */}
         <Link
           to="/home"
@@ -344,7 +356,7 @@ export default function AppShell() {
           <div className="w-8 h-8 rounded-xl bg-fuchsia-600 flex items-center justify-center text-white shadow-sm shadow-fuchsia-500">
             <Compass size={18} className="animate-spin-slow" />
           </div>
-          <span className="text-lg font-extrabold tracking-tight bg-gradient-to-r from-fuchsia-600 to-indigo-600 bg-clip-text text-transparent">
+          <span className={`text-lg font-extrabold tracking-tight bg-gradient-to-r from-fuchsia-600 to-indigo-600 bg-clip-text text-transparent transition-all duration-300 ${isSidebarHovered ? 'opacity-100 w-auto' : 'opacity-0 w-0 overflow-hidden'}`}>
             Orbit Workspace
           </span>
         </Link>
@@ -357,9 +369,9 @@ export default function AppShell() {
           >
             <span className="truncate flex items-center gap-1.5">
               <Layers size={14} className="text-fuchsia-600" />
-              {activeWorkspace ? activeWorkspace.name : 'Select Workspace'}
+              {isSidebarHovered ? (activeWorkspace ? activeWorkspace.name : 'Select Workspace') : (activeWorkspace ? activeWorkspace.name.substring(0, 1) : 'S')}
             </span>
-            <ChevronDown size={14} className={`text-gray-400 transition-transform ${showWorkspaceSelect ? 'rotate-180' : ''}`} />
+            <ChevronDown size={14} className={`text-gray-400 transition-transform ${showWorkspaceSelect ? 'rotate-180' : ''} ${isSidebarHovered ? 'opacity-100 block' : 'opacity-0 hidden'}`} />
           </button>
 
           {showWorkspaceSelect && (
@@ -413,7 +425,7 @@ export default function AppShell() {
             }
           >
             <Compass size={16} />
-            <span>Home</span>
+            <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarHovered ? 'opacity-100 w-auto ml-1' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>Home</span>
           </NavLink>
 
           <NavLink
@@ -427,7 +439,7 @@ export default function AppShell() {
             }
           >
             <Layers size={16} />
-            <span>Workspaces</span>
+            <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarHovered ? 'opacity-100 w-auto ml-1' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>Workspaces</span>
           </NavLink>
 
           <NavLink
@@ -441,7 +453,7 @@ export default function AppShell() {
             }
           >
             <CheckSquare size={16} />
-            <span>My Tasks</span>
+            <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarHovered ? 'opacity-100 w-auto ml-1' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>My Tasks</span>
           </NavLink>
 
           <NavLink
@@ -455,14 +467,14 @@ export default function AppShell() {
             }
           >
             <Inbox size={16} />
-            <span>Inbox</span>
+            <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarHovered ? 'opacity-100 w-auto ml-1' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>Inbox</span>
           </NavLink>
 
           {/* Projects Divider & List */}
           {activeWorkspace && (
             <div className="pt-6">
               <div className="px-4 pb-2 flex items-center justify-between">
-                <span className="text-[10px] uppercase tracking-wider font-extrabold text-gray-400">
+                <span className={`text-[10px] uppercase tracking-wider font-extrabold text-gray-400 transition-all duration-300 ${isSidebarHovered ? 'opacity-100 block' : 'opacity-0 hidden'}`}>
                   Projects
                 </span>
                 <Link
@@ -470,7 +482,7 @@ export default function AppShell() {
                   className="text-gray-400 hover:text-fuchsia-600 transition-colors"
                   title="Workspace Dashboard"
                 >
-                  <Settings size={12} />
+                  <Settings size={12} className={isSidebarHovered ? 'opacity-100' : 'opacity-0'} />
                 </Link>
               </div>
 
@@ -489,7 +501,7 @@ export default function AppShell() {
                     }
                   >
                     <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                    <span className="truncate">{p.name}</span>
+                    <span className={`truncate whitespace-nowrap transition-all duration-300 ${isSidebarHovered ? "opacity-100 w-auto ml-1" : "opacity-0 w-0 overflow-hidden ml-0"}`}>{p.name}</span>
                   </NavLink>
                 ))}
 
@@ -507,14 +519,14 @@ export default function AppShell() {
         <div className="p-4 border-t border-gray-200 bg-gray-50/50 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Avatar initials={user?.initials || '??'} name={user?.name || ''} size="sm" />
-            <div className="leading-tight">
+            <div className={`leading-tight transition-all duration-300 ${isSidebarHovered ? 'opacity-100 w-auto ml-2' : 'opacity-0 w-0 overflow-hidden ml-0'}`}>
               <div className="text-xs font-extrabold text-gray-900 truncate max-w-[120px]">{user?.name}</div>
               <div className="text-[10px] text-gray-500 font-medium capitalize">{activeWorkspace?.members.find(m => m.id === user?.id)?.role || user?.globalRole}</div>
             </div>
           </div>
           <button
             onClick={handleLogout}
-            className="p-1.5 rounded-full hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors"
+            className={`p-1.5 rounded-full hover:bg-red-50 text-gray-400 hover:text-red-600 transition-all ${isSidebarHovered ? 'opacity-100 block' : 'opacity-0 hidden'}`}
             title="Log Out"
           >
             <LogOut size={16} />
@@ -529,7 +541,11 @@ export default function AppShell() {
         <header className="h-16 border-b border-gray-200 flex items-center justify-between px-8 bg-white shrink-0 z-30">
           
           {/* Breadcrumbs — Orbit › Workspace › Project */}
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-600">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setIsMobileSidebarOpen(true)} className="md:hidden text-gray-500 hover:text-gray-900">
+              <Menu size={20} />
+            </button>
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-600 hidden sm:flex">
             {/* Orbit root */}
             <span
               className="hover:text-fuchsia-600 transition-colors cursor-pointer"
@@ -583,6 +599,7 @@ export default function AppShell() {
                 <span className="text-gray-900 font-extrabold tracking-tight">Inbox</span>
               </>
             )}
+          </div>
           </div>
 
           {/* Search Bar */}
