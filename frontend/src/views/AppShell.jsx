@@ -98,7 +98,6 @@ export default function AppShell() {
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showWorkspaceSelect, setShowWorkspaceSelect] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -333,17 +332,13 @@ export default function AppShell() {
   return (
     <div className="flex h-screen bg-white font-sans overflow-hidden text-gray-900">
       {/* Sidebar (Left, Fixed) */}
-      {isMobileSidebarOpen && (
-        <div 
-          className="fixed inset-0 z-40 bg-black/20 md:hidden transition-opacity"
-          onClick={() => setIsMobileSidebarOpen(false)}
-        />
-      )}
-      <aside 
-        onMouseEnter={() => setIsSidebarHovered(true)}
-        onMouseLeave={() => setIsSidebarHovered(false)}
-        className={`fixed md:relative z-50 bg-gray-50 border-r border-gray-200 flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${isSidebarHovered ? 'w-64' : 'w-20'}`}
-      >
+      {/* Desktop Sidebar (Hover-to-expand overlay) */}
+      <div className="hidden md:block w-20 h-full shrink-0 relative z-50">
+        <aside 
+          onMouseEnter={() => setIsSidebarHovered(true)}
+          onMouseLeave={() => setIsSidebarHovered(false)}
+          className={`absolute top-0 left-0 bg-gray-50 border-r border-gray-200 flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out ${isSidebarHovered ? 'w-64 shadow-2xl' : 'w-20'}`}
+        >
         {/* Sidebar Header / Logo */}
         <Link
           to="/home"
@@ -533,6 +528,7 @@ export default function AppShell() {
           </button>
         </div>
       </aside>
+      </div>
 
       {/* Main Shell Space (Right side) */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
@@ -541,11 +537,7 @@ export default function AppShell() {
         <header className="h-16 border-b border-gray-200 flex items-center justify-between px-8 bg-white shrink-0 z-30">
           
           {/* Breadcrumbs — Orbit › Workspace › Project */}
-          <div className="flex items-center gap-4">
-            <button onClick={() => setIsMobileSidebarOpen(true)} className="md:hidden text-gray-500 hover:text-gray-900">
-              <Menu size={20} />
-            </button>
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-600 hidden sm:flex">
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-600">
             {/* Orbit root */}
             <span
               className="hover:text-fuchsia-600 transition-colors cursor-pointer"
@@ -599,7 +591,6 @@ export default function AppShell() {
                 <span className="text-gray-900 font-extrabold tracking-tight">Inbox</span>
               </>
             )}
-          </div>
           </div>
 
           {/* Search Bar */}
@@ -880,9 +871,45 @@ export default function AppShell() {
         </header>
 
         {/* View Content Area */}
-        <main className="flex-1 overflow-auto bg-white relative">
+        <main className="flex-1 overflow-auto bg-white relative pb-16 md:pb-0">
           <Outlet />
         </main>
+
+
+      {/* Mobile Bottom Navigation (Instagram-style) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-200 z-50 flex items-center justify-around px-2 pb-safe">
+        <NavLink to="/home" className={({ isActive }) => `flex flex-col items-center justify-center w-14 h-full ${isActive ? 'text-fuchsia-600' : 'text-gray-400 hover:text-gray-600'}`}>
+          <Home size={22} />
+          <span className="text-[9px] font-bold mt-1">Home</span>
+        </NavLink>
+        
+        <NavLink to="/workspaces" className={({ isActive }) => `flex flex-col items-center justify-center w-14 h-full ${isActive ? 'text-fuchsia-600' : 'text-gray-400 hover:text-gray-600'}`}>
+          <Layers size={22} />
+          <span className="text-[9px] font-bold mt-1">Spaces</span>
+        </NavLink>
+        
+        <NavLink to="/my-tasks" className={({ isActive }) => `flex flex-col items-center justify-center w-14 h-full ${isActive ? 'text-fuchsia-600' : 'text-gray-400 hover:text-gray-600'}`}>
+          <CheckSquare size={22} />
+          <span className="text-[9px] font-bold mt-1">Tasks</span>
+        </NavLink>
+        
+        <NavLink to="/inbox" className={({ isActive }) => `flex flex-col items-center justify-center w-14 h-full ${isActive ? 'text-fuchsia-600' : 'text-gray-400 hover:text-gray-600'}`}>
+          <div className="relative">
+            <Inbox size={22} />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full flex items-center justify-center text-[8px] font-bold text-white border-2 border-white shadow-sm">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </div>
+          <span className="text-[9px] font-bold mt-1">Inbox</span>
+        </NavLink>
+        
+        <button onClick={() => setShowProfileModal(true)} className="flex flex-col items-center justify-center w-14 h-full text-gray-400 hover:text-gray-600">
+          <Avatar initials={user?.initials || '??'} name={user?.name || ''} size="sm" />
+          <span className="text-[9px] font-bold mt-1">Profile</span>
+        </button>
+      </nav>
 
       </div>
 
