@@ -280,6 +280,114 @@ The application uses **13 tables** managed via Alembic migrations:
 | `user_project_views` | Last-viewed timestamps per user per project |
 | `user_profile_histories` | Historical name/password changes for reuse prevention |
 
+### Entity-Relationship Diagram
+
+To make the architecture easier to digest, here is a simplified ER diagram mapping the core business logic and relational flows, omitting auxiliary fields like timestamps and internal flags for clarity.
+
+```mermaid
+erDiagram
+    %% ==========================================
+    %% CORE ENTITIES
+    %% ==========================================
+    USERS {
+        int id PK
+        string email
+        string name
+    }
+
+    WORKSPACES {
+        int id PK
+        string name
+    }
+
+    PROJECTS {
+        int id PK
+        string name
+        int workspace_id FK
+    }
+
+    TASKS {
+        int id PK
+        string title
+        string status
+        int project_id FK
+        int assignee_id FK
+        int assignor_id FK
+    }
+
+    %% ==========================================
+    %% JUNCTIONS & COLLABORATION
+    %% ==========================================
+    WORKSPACE_MEMBERSHIPS {
+        int id PK
+        string role
+        int workspace_id FK
+        int user_id FK
+    }
+
+    COMMENTS {
+        int id PK
+        string content
+        int task_id FK
+        int author_id FK
+    }
+
+    %% ==========================================
+    %% ACTIVITY & AUDIT (Simplified)
+    %% ==========================================
+    NOTIFICATIONS {
+        int id PK
+        string message
+        int user_id FK
+    }
+
+    AUDIT_LOGS {
+        int id PK
+        string action
+        int workspace_id FK
+        int user_id FK
+    }
+
+    USER_SESSIONS {
+        int id PK
+        string device_name
+        int user_id FK
+    }
+    
+    TASK_EDIT_HISTORIES {
+        int id PK
+        string field_name
+        int task_id FK
+    }
+
+    %% ==========================================
+    %% RELATIONSHIPS
+    %% ==========================================
+    
+    %% Workspace & Access Flow
+    WORKSPACES ||--o{ WORKSPACE_MEMBERSHIPS : "has members"
+    USERS ||--o{ WORKSPACE_MEMBERSHIPS : "belongs to"
+    
+    %% Project & Task Flow
+    WORKSPACES ||--o{ PROJECTS : "contains"
+    PROJECTS ||--o{ TASKS : "contains"
+    
+    %% User to Task Flow
+    USERS ||--o{ TASKS : "is assigned"
+    USERS ||--o{ TASKS : "creates"
+    
+    %% Collaboration Flow
+    TASKS ||--o{ COMMENTS : "has"
+    USERS ||--o{ COMMENTS : "writes"
+    
+    %% Audit & Tracking Flows
+    USERS ||--o{ NOTIFICATIONS : "receives"
+    WORKSPACES ||--o{ AUDIT_LOGS : "logs events for"
+    USERS ||--o{ AUDIT_LOGS : "triggers event"
+    USERS ||--o{ USER_SESSIONS : "owns"
+    TASKS ||--o{ TASK_EDIT_HISTORIES : "tracks changes"
+```
+
 ---
 
 ## 🚀 Local Setup
